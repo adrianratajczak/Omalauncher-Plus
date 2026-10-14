@@ -129,12 +129,25 @@ class AgentStore(
     suspend fun install(agent: Agent) =
         run(agent, "installing") { installScript(agent) }.also { ok -> if (ok) onInstalled(agent) }
 
-    /** Installs [agent] with mise, bootstrapping mise itself if needed. */
+    /**
+     * Installs [agent] with mise, bootstrapping mise itself if needed. npm packages use npm directly after mise
+     * installs Node: recent mise releases pass an empty `--before` argument to npm's backend on ARM, which makes
+     * packages such as OpenCode fail before npm gets to install them. A small mise shim keeps the rest of the
+     * launcher (and [isInstalled]) using the same path as mise-managed tools.
+     */
     fun installScript(agent: Agent) =
         buildString {
             if (!mise.exists()) append("curl -fsSL https://mise.run | sh && ")
-            if (agent.pkg.startsWith("npm:")) append("mise use -g node@lts && ")
-            append("mise use -g ${shellQuote(agent.pkg)}")
+            if (agent.pkg.startsWith("npm:")) {
+                val packageSpec = agent.pkg.removePrefix("npm:")
+                val shim = "/root/.local/share/mise/shims/${agent.bin}"
+                append("mise use -g node@lts && ")
+                append("npm install -g ${shellQuote(packageSpec)} && ")
+                append("mkdir -p /root/.local/share/mise/shims && ")
+                append("printf '%s\\n' '#!/bin/sh' 'exec \$(npm prefix -g)/bin/${agent.bin} \"\$@\"' > ${shellQuote(shim)} && chmod +x ${shellQuote(shim)}")
+            } else {
+                append("mise use -g ${shellQuote(agent.pkg)}")
+            }
             // Downloads are only needed during install; storage on phones is tight.
             append(" && mise cache clear && rm -rf ~/.local/share/mise/downloads")
         }
@@ -146,7 +159,14 @@ class AgentStore(
     }
 
     suspend fun remove(agent: Agent) =
-        run(agent, "removing") { "mise unuse -g ${shellQuote(agent.pkg)} && mise prune -y" }
+        run(agent, "removing") {
+            if (agent.pkg.startsWith("npm:")) {
+                val shim = "/root/.local/share/mise/shims/${agent.bin}"
+                "npm uninstall -g ${shellQuote(agent.pkg.removePrefix("npm:"))} || true; rm -f ${shellQuote(shim)}"
+            } else {
+                "mise unuse -g ${shellQuote(agent.pkg)} && mise prune -y"
+            }
+        }
             .also {
                 refresh()
                 onChanged()
