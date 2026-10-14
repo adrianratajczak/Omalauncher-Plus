@@ -11,6 +11,9 @@
     <!-- Uninstall from the app drawer's long-press menu (ACTION_DELETE). -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
+    <!-- Swipe down on home expands the notification shade (StatusBarManager.expandNotificationsPanel). Normal permission, no runtime prompt. -->
+    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+
     <uses-feature
         android:name="android.software.live_wallpaper"
         android:required="false" />
@@ -30,7 +33,7 @@
         android:name=".App"
         android:extractNativeLibs="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Omalauncher"
+        android:label="Omalauncher+"
         android:theme="@style/Theme.Omalauncher"
         android:usesCleartextTraffic="true">
 
@@ -199,7 +202,7 @@
             android:label="Files"
             android:launchMode="singleTask"
             android:resizeableActivity="true"
-            android:taskAffinity="dev.omalauncher.files"
+            android:taskAffinity="dev.omalauncher.plus.files"
             android:theme="@style/Theme.Omalauncher.Window"
             android:windowSoftInputMode="adjustResize" />
 
@@ -228,7 +231,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="dev.omalauncher.files"
+            android:authorities="dev.omalauncher.plus.files"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

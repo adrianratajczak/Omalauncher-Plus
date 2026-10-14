@@ -1,4 +1,4 @@
-rootProject.name = "Omalauncher"
+rootProject.name = "Omalauncher+"
 
 pluginManagement {
     repositories {

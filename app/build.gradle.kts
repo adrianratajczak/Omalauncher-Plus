@@ -14,11 +14,12 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.omalauncher"
+        applicationId = "dev.omalauncher.plus"
         minSdk = 29
         targetSdk = 37
+        // Upstream's numbering (14 / 0.7.2), suffixed; this fork also has its own applicationId.
         versionCode = 14
-        versionName = "0.7.2"
+        versionName = "0.7.2+"
         ndk { abiFilters += "arm64-v8a" }
     }
 
