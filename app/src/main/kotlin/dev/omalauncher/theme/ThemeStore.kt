@@ -349,6 +349,13 @@ class ThemeStore(
                     checkNotNull(ThemeDirs.colorsOf(staging)) { "it has no colors.toml or alacritty.toml" }
                     File(staging, ThemeDirs.SOURCE_MARKER).writeText(repo.url + "\n")
                     val target = File(dirs.user, name)
+                    // The catalog's screenshot, for themes without a preview of their own; an update keeps the one it had.
+                    val screenshot =
+                        catalog.entryFor(repo)?.let { catalog.image(it) }
+                            ?: File(target, ThemeDirs.CATALOG_PREVIEW).takeIf { it.isFile }
+                    // Best effort: a theme without its screenshot still installs.
+                    runCatching { screenshot?.copyTo(File(staging, ThemeDirs.CATALOG_PREVIEW), overwrite = true) }
+                        .onFailure { Log.w(TAG, "no catalog preview for $name", it) }
                     dirs.user.mkdirs()
                     LauncherData.deleteTree(target)
                     check(staging.renameTo(target)) { "can't move the theme into place" }
