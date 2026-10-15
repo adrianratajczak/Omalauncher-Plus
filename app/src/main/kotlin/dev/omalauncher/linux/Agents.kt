@@ -31,7 +31,7 @@ data class Agent(
 val AGENTS =
     listOf(
         Agent("claude", "Claude Code", "Anthropic's coding agent", "claude"),
-        Agent("opencode", "OpenCode", "Open source agent, any model provider", "opencode"),
+        Agent("opencode", "OpenCode", "Open source agent, any model provider", "npm:@opencode/cli"),
         Agent("codex", "Codex", "OpenAI's coding agent", "codex"),
         Agent("grok", "Grok", "xAI's coding agent", "npm:@xai-official/grok"),
         Agent("copilot", "GitHub Copilot", "GitHub's coding agent", "copilot"),
@@ -142,6 +142,8 @@ class AgentStore(
                 val packageSpec = agent.pkg.removePrefix("npm:")
                 val shim = "/root/.local/share/mise/shims/${agent.bin}"
                 append("mise use -g node@lts && ")
+                // A previous `mise use -g <bin>` (e.g. `opencode`) leaves a broken tool entry behind; drop it first.
+                if (agent.bin != packageSpec) append("mise unuse -g ${shellQuote(agent.bin)} || true; ")
                 append("npm install -g ${shellQuote(packageSpec)} && ")
                 append("mkdir -p /root/.local/share/mise/shims && ")
                 append("printf '%s\\n' '#!/bin/sh' 'exec \$(npm prefix -g)/bin/${agent.bin} \"\$@\"' > ${shellQuote(shim)} && chmod +x ${shellQuote(shim)}")
@@ -162,7 +164,7 @@ class AgentStore(
         run(agent, "removing") {
             if (agent.pkg.startsWith("npm:")) {
                 val shim = "/root/.local/share/mise/shims/${agent.bin}"
-                "npm uninstall -g ${shellQuote(agent.pkg.removePrefix("npm:"))} || true; rm -f ${shellQuote(shim)}"
+                "npm uninstall -g ${shellQuote(agent.pkg.removePrefix("npm:"))} || true; mise unuse -g ${shellQuote(agent.bin)} || true; rm -f ${shellQuote(shim)}"
             } else {
                 "mise unuse -g ${shellQuote(agent.pkg)} && mise prune -y"
             }
