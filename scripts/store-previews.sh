@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Renders every widget in the widget store in every bundled Omarchy theme, for the
-# store's per-theme previews: widgets/<author>/<name>/previews/<theme>.webp, plus
-# preview.png in the default theme for launchers that don't know about themes.
+# Renders every widget and app in the widget store in every bundled Omarchy theme, for the
+# store's per-theme previews: widgets/<author>/<name>/previews/<theme>.webp (apps/... for an
+# app, whose picture is its view at the phone's size), plus preview.png in the default theme
+# for launchers that don't know about themes.
 #
 # Needs a debug build on an emulator (adb root) with Linux installed, so widgets
 # that run commands show real data, and the packages they require (curl, jq,
@@ -9,7 +10,7 @@
 # store-previews-demo.sh. The launcher renders each tile off screen
 # (WidgetEngine.previewThemes) and takes every theme's colors while it does.
 #
-#   scripts/store-previews.sh [store repo, default ../omarchy-widgets] [widget name or author/name...]
+#   scripts/store-previews.sh [store repo, default ../omarchy-widgets] [widget or app name, or author/name...]
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -98,6 +99,8 @@ seed() {
     life) json='{"birthYear":"1990","lifespan":"80"}' ;;
     # A made-up key: the demo's python3 answers lastfm's helper without calling Last.fm.
     lastfm) json='{"username":"demo","apiKey":"demo"}' ;;
+    # A few days into practice: a streak, a level and two sessions done.
+    yoga) json=$(printf '{"done":[1,3],"streak":4,"lastDay":"%s","xp":250,"pace":1,"voice":true}' "$(date +%F)") ;;
     *) return 0 ;;
   esac
   printf '{"v":1,"savedAt":%s,"values":%s}' "$(date +%s)" "$json" > "$WORK/state.json"
@@ -113,21 +116,23 @@ if [ $# -gt 0 ]; then
   # A name, or author/name when two authors share it.
   for n in "$@"; do
     case $n in
-      */*) dirs+=("$STORE/widgets/$n") ;;
-      *) dirs+=("$(dirname "$(ls "$STORE"/widgets/*/"$n"/widget.owl)")") ;;
+      */*) dirs+=("$(dirname "$(ls "$STORE"/widgets/"$n"/widget.owl "$STORE"/apps/"$n"/app.owl 2>/dev/null | head -1)")") ;;
+      *) dirs+=("$(dirname "$(ls "$STORE"/widgets/*/"$n"/widget.owl "$STORE"/apps/*/"$n"/app.owl 2>/dev/null | head -1)")") ;;
     esac
   done
 else
-  for f in "$STORE"/widgets/*/*/widget.owl; do dirs+=("$(dirname "$f")"); done
+  for f in "$STORE"/widgets/*/*/widget.owl "$STORE"/apps/*/*/app.owl; do [ -f "$f" ] && dirs+=("$(dirname "$f")"); done
 fi
 
 for dir in "${dirs[@]}"; do
   name="store-$(basename "$dir").owl"
-  hash=$(shasum -a 256 "$dir/widget.owl" | cut -d' ' -f1)
+  # A phone-sized app view goes in at half size, to stay under the store's 100 KB a theme.
+  if [ -f "$dir/app.owl" ]; then owl=$dir/app.owl; resize=(-resize 540 0); else owl=$dir/widget.owl; resize=(); fi
+  hash=$(shasum -a 256 "$owl" | cut -d' ' -f1)
   echo "$(basename "$dir")"
   adb shell "rm -rf $APP/.preview/themes/$name.done"
   seed "$(basename "$dir")" "$name"
-  put "$dir/widget.owl" "$name"
+  put "$owl" "$name"
   if ! wait_for 30 "grep -q $hash $APP/.check/$name.txt"; then
     echo "  didn't compile in time; skipped" >&2
     continue
@@ -141,7 +146,7 @@ for dir in "${dirs[@]}"; do
   rm -rf "$WORK/png" && mkdir -p "$WORK/png" "$dir/previews"
   for theme in $(adb shell "ls $APP/.preview/themes" | grep -v '\.done$'); do
     adb exec-out cat "$APP/.preview/themes/$theme/$name.png" > "$WORK/png/$theme.png"
-    cwebp -quiet -q 80 "$WORK/png/$theme.png" -o "$dir/previews/$theme.webp"
+    cwebp -quiet -q 80 ${resize[@]+"${resize[@]}"} "$WORK/png/$theme.png" -o "$dir/previews/$theme.webp"
   done
   small_png "$WORK/png/$DEFAULT_THEME.png" "$dir/preview.png"
   echo "  $(ls "$dir/previews" | wc -l | tr -d ' ') themes, $(du -sh "$dir/previews" | cut -f1)"

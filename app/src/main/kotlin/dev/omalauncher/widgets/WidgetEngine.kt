@@ -590,7 +590,7 @@ class WidgetEngine(
     /**
      * Debug builds, for the widget store's per-theme previews (scripts/store-previews.sh): once
      * [name]'s sources have loaded, renders its tile in every bundled Omarchy theme to
-     * .preview/themes/<theme>/<file>.png, then writes .preview/themes/<file>.done. Asked for by
+     * .preview/themes/<theme>/<file>.png (an app: its view at the phone's size), then writes .preview/themes/<file>.done. Asked for by
      * writing .check/<file>.themes. The whole launcher takes each theme's colors while it runs.
      */
     private suspend fun previewThemes(name: String) {
@@ -605,9 +605,15 @@ class WidgetEngine(
         try {
             val loaded: suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
             withTimeoutOrNull(30_000) { loaded() }
+            val dm = context.resources.displayMetrics
             for (theme in themes) {
                 Palette.apply(theme.colors)
-                previews.render(spec, inst, cells, w, h, File(dir, "${theme.name}/$name.png"), loaded)
+                val out = File(dir, "${theme.name}/$name.png")
+                if (spec.kind == OwlKind.App) {
+                    previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, out, loaded)
+                } else {
+                    previews.render(spec, inst, cells, w, h, out, loaded)
+                }
             }
         } finally {
             Palette.restore(before)
