@@ -27,6 +27,9 @@ enum class SettingsPage {
     /** How big app icons draw: the drawer's slot, scaled. */
     IconSize,
 
+    /** The web engine and the app store the bar's actions search. */
+    Search,
+
     /** Install, progress, remove; opened by anything that needs Linux. */
     Linux,
     Licenses,
@@ -90,6 +93,7 @@ private fun SettingsPage(
                 onGestures = { stack.push(SettingsPage.Gestures) },
                 onIconPacks = { stack.push(SettingsPage.IconPacks) },
                 onIconSize = { stack.push(SettingsPage.IconSize) },
+                onSearch = { stack.push(SettingsPage.Search) },
             )
         SettingsPage.Style -> StyleScreen(runtime, onDismiss = close, onBrowse = { stack.push(SettingsPage.Themes) })
         SettingsPage.Themes -> ThemeCatalogScreen(runtime.themes, onDismiss = close)
@@ -109,5 +113,6 @@ private fun SettingsPage(
         SettingsPage.Gestures -> GesturesScreen(runtime, onDismiss = close)
         SettingsPage.IconPacks -> IconPackScreen(runtime, onDismiss = close)
         SettingsPage.IconSize -> IconSizeScreen(runtime, onDismiss = close)
+        SettingsPage.Search -> SearchSettingsScreen(onDismiss = close)
     }
 }

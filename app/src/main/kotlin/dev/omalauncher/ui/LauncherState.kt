@@ -74,7 +74,7 @@ class LauncherState {
             typed = value
         }
 
-    /** The result chosen with Tab or the arrow keys (-1 = ask the agent); null follows the ranking. Reset by typing. */
+    /** The result chosen with Tab or the arrow keys (-3 = ask the agent, -2 the web, -1 the store); null follows the ranking. Reset by typing. */
     var picked by mutableStateOf<Int?>(null)
 
     /** Asks the prompt bar to start typing (Super+A) or to send (the ask row); consumed by the bar. */

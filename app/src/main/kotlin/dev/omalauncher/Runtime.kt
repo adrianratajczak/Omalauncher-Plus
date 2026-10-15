@@ -44,6 +44,7 @@ import dev.omalauncher.theme.ThemeStore
 import dev.omalauncher.ui.Gestures
 import dev.omalauncher.ui.IconPackStore
 import dev.omalauncher.ui.IconSize
+import dev.omalauncher.ui.Search
 import dev.omalauncher.ui.KeyboardBridge
 import dev.omalauncher.ui.SettingsPage
 import dev.omalauncher.ui.TerminalTiles
@@ -203,6 +204,7 @@ class Runtime(
                 agents.load()
                 iconPacks.refresh()
                 IconSize.load(context)
+                Search.load(context)
             }
             themes.load()
             style.start()

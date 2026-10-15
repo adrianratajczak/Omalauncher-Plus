@@ -194,8 +194,8 @@ internal class BarSearch(
     val hits: List<AppHit>,
     val opensApp: Boolean,
 ) {
-    /** The result Enter acts on: an index into [hits], or -1 for the agent. */
-    fun highlighted(picked: Int?) = picked?.coerceIn(-1, hits.lastIndex) ?: if (opensApp) 0 else -1
+    /** The result Enter acts on: -3 asks the agent, -2 searches the web, -1 the store, the rest open apps. */
+    fun highlighted(picked: Int?) = picked?.coerceIn(-3, hits.lastIndex) ?: if (opensApp) 0 else -3
 }
 
 private fun allApps(runtime: Runtime): List<AppHit> =
@@ -379,7 +379,10 @@ internal fun AppPanel(
     search: BarSearch,
     highlighted: Int,
     handlers: AppHandlers,
-    onAsk: () -> Unit,
+    /** The bar's query on the web, in the default browser. */
+    onWeb: (String) -> Unit,
+    /** The bar's query in the app store. */
+    onStore: (String) -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -548,38 +551,34 @@ internal fun AppPanel(
                         }
                     }
                 }
-                if (query.isNotBlank()) AskRow(runtime, linuxState == LinuxState.Installed, query, highlighted == -1, onAsk)
+                if (query.isNotBlank()) {
+                    // The agent needs no row: Enter in the bar asks it. The store sits over the web, the web over the bar.
+                    Column(Modifier.padding(bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ActionRow("search store", highlighted == -1, onClick = { onStore(query) })
+                        ActionRow("search web", highlighted == -2, onClick = { onWeb(query) })
+                    }
+                }
             }
         }
     }
 }
 
-/** The one line above the bar that sends what's typed to the agent. */
+/** One action row above the bar: the query on the web or in the store. */
 @Composable
-private fun AskRow(
-    runtime: Runtime,
-    linux: Boolean,
-    query: String,
+private fun ActionRow(
+    label: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val agent = runtime.agents.default
-    val label =
-        when {
-            !linux -> "ask an agent · install linux"
-            agent == null -> "ask an agent · install one"
-            else -> "ask ${agent.bin}: " + query.trim().replace('\n', ' ')
-        }
     Row(
         Modifier
-            .padding(bottom = 6.dp)
             .fillMaxWidth()
             .then(if (selected) Modifier.frame(2.dp, Palette.accent, Palette.background) else Modifier.clip(LauncherStyle.shape()))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BasicText("⏎ ", style = Mono.copy(color = if (selected) Palette.accent else Palette.muted))
+        BasicText("⌕ ", style = Mono.copy(color = if (selected) Palette.accent else Palette.muted))
         BasicText(
             label,
             style = Mono.copy(color = if (selected) Palette.foreground else Palette.muted),

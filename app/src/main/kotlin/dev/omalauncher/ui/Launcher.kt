@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.activity.compose.BackHandler
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
@@ -131,6 +133,29 @@ private fun DesktopScreen(
         }
     }
 
+    /** Opens [url] in the default browser; false when nothing opens it. */
+    fun openUrl(url: String) = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.isSuccess
+
+    /** Leaves the drawer behind, like opening an app does. */
+    fun leavePanel() {
+        state.query = ""
+        state.closeNow()
+    }
+
+    /** The bar's text on the web, in the default browser. */
+    fun searchWeb(query: String) {
+        if (query.isBlank()) return
+        leavePanel()
+        openUrl(Search.webUrl(query))
+    }
+
+    /** The bar's text in the app store: the Play app, its site without it, or F-Droid's site. */
+    fun searchStore(query: String) {
+        if (query.isBlank()) return
+        leavePanel()
+        if (Search.store != Search.Store.Play || !openUrl(Search.storeUrl(query))) openUrl(Search.storeWebUrl(query))
+    }
+
     val handlers =
         remember(runtime, state, context) {
             AppHandlers(
@@ -194,7 +219,8 @@ private fun DesktopScreen(
                         search = search,
                         highlighted = highlighted,
                         handlers = handlers,
-                        onAsk = { state.promptRequest = PromptRequest.Send },
+                        onWeb = ::searchWeb,
+                        onStore = ::searchStore,
                         onSettings = { state.show() },
                         modifier =
                             Modifier.graphicsLayer {
@@ -211,7 +237,7 @@ private fun DesktopScreen(
                 // Swiping up from either does what it does on home, as from the dock on stock launchers.
                 if (LauncherStyle.recentApps && !panelShown) RecentStrip(runtime, handlers, Modifier.homeSwipe(runtime, state))
                 // Insets itself by the grid gap, so it lines up with the tiles and the gap still takes taps.
-                PromptBar(runtime, state, search = search, highlighted = highlighted, onLaunch = handlers.launch, modifier = Modifier.homeSwipe(runtime, state))
+                PromptBar(runtime, state, search = search, highlighted = highlighted, onLaunch = handlers.launch, onWeb = ::searchWeb, onStore = ::searchStore, modifier = Modifier.homeSwipe(runtime, state))
             }
         }
     }

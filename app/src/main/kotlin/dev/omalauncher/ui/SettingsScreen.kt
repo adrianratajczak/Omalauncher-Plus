@@ -39,6 +39,7 @@ fun SettingsScreen(
     onGestures: () -> Unit,
     onIconPacks: () -> Unit,
     onIconSize: () -> Unit,
+    onSearch: () -> Unit,
 ) {
     val context = LocalContext.current
     val linux by runtime.bootstrap.state.collectAsState()
@@ -63,6 +64,7 @@ fun SettingsScreen(
                 Triple("icon pack", packSubtitle, onIconPacks),
                 Triple("icon size", IconSize.label, onIconSize),
                 Triple("gestures", "swipe up: ${runtime.gestures.swipeUp.label} · down: ${runtime.gestures.swipeDown.label}", onGestures),
+                Triple("search", Search.label, onSearch),
                 Triple("linux", linuxStatus, onLinux),
                 if (installed) {
                     Triple("coding agents", runtime.agents.default?.let { "default: ${it.name}" } ?: "install Claude Code, OpenCode, …", onAgents)
