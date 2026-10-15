@@ -76,6 +76,11 @@ and Tab/arrows walk apps, store, web and the agent's ask. Settings › search
 picks the web engine (Google by default, DuckDuckGo, Bing, or a custom URL with
 `{q}` for the query) and the store (Play or F-Droid).
 
+The drawer itself was rewritten for open speed (deferred keyboard, ranking off
+the main thread, memoized rows) and grew Niagara-style letter rail: ★, # and
+only the initials the apps have. Dragging it filters to the letter under the
+finger, which also sits in the top-left corner until ★ clears it.
+
 ### Coding agent installs that work
 
 npm-based agents (OpenCode, Grok, Kimi) install with plain `npm install -g`

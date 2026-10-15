@@ -35,6 +35,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -119,7 +126,15 @@ private fun DesktopScreen(
     val panelShown by remember(state) { derivedStateOf { state.drawer.value > 0.01f } }
     // Closing it forgets the search, like stock drawers: the next swipe up shows every app, not the old results.
     LaunchedEffect(panelShown) { if (!panelShown) state.query = "" }
-    val search by remember(runtime, state) { derivedStateOf { searchApps(runtime, state.query) } }
+    // Ranked off the main thread, so typing never waits on it; blank clears at once.
+    var search by remember(runtime) { mutableStateOf(BarSearch(emptyList(), false)) }
+    LaunchedEffect(runtime, state) {
+        snapshotFlow { state.query }
+            .debounce(90)
+            .collectLatest { query ->
+                search = if (query.isBlank()) BarSearch(emptyList(), false) else withContext(Dispatchers.Default) { searchApps(runtime, query) }
+            }
+    }
     val highlighted = search.highlighted(state.picked)
 
     fun launch(hit: AppHit) {

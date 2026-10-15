@@ -216,6 +216,8 @@ internal fun PromptBar(
     LaunchedEffect(panelShown) {
         // Opened to dictate, the keyboard stays down.
         if (panelShown && !speech.listening) {
+            // The keyboard resizing mid-animation is the visible hitch: let the drawer settle first.
+            kotlinx.coroutines.delay(180)
             focus.requestFocus()
             keyboard?.show()
         } else if (!panelShown && focused) {
