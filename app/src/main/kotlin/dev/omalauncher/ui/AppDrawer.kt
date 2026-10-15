@@ -701,12 +701,15 @@ internal fun AppPanel(
                         Box(Modifier.fillMaxSize()) {
                             // Search results bottom-up, so the best match sits right above the bar; the full list reads
                             // top-down from its start, like stock drawers, so a drag down there closes the panel right away.
+                            // The picked letter sits in the top-left corner until ★ clears it.
+                            val corner = railLetter
                             var rows = 0
                             LazyColumn(
                                 state = listState,
                                 reverseLayout = shown == null,
                                 modifier = Modifier.fillMaxWidth().nestedScroll(pullToClose).padding(end = if (railLetters.isNotEmpty()) 36.dp else 0.dp),
-                                contentPadding = PaddingValues(top = 8.dp, bottom = 4.dp),
+                                // The corner letter takes the top-left; the list starts below it.
+                                contentPadding = PaddingValues(top = if (corner != null) 52.dp else 8.dp, bottom = 4.dp),
                             ) {
                                 entries.forEach { entry ->
                                     when (entry) {
@@ -746,14 +749,16 @@ internal fun AppPanel(
                                 )
                             }
                             // The picked letter sits in the top-left corner until ★ clears it.
-                            val corner = railLetter
                             if (corner != null) {
                                 BasicText(
                                     corner.toString().uppercase(),
                                     Modifier
                                         .align(Alignment.TopStart)
                                         .padding(start = 4.dp)
-                                        .clickable { railLetter = null },
+                                        .clip(LauncherStyle.shape(8.dp))
+                                        .background(Palette.surface)
+                                        .clickable { railLetter = null }
+                                        .padding(horizontal = 12.dp, vertical = 4.dp),
                                     style = Mono.copy(fontSize = 28.sp, color = Palette.accent),
                                 )
                             }
