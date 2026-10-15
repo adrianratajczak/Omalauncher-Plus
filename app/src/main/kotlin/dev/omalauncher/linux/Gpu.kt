@@ -143,8 +143,8 @@ class Gpu(
     }
 
     /**
-     * The test build carries the patched Mesa tar. A build without that asset
-     * leaves the install script to fail closed on the missing file.
+     * The patched Mesa tar (scripts/mesa/build-aarch64.sh) is in the APK's assets.
+     * A build without that asset leaves the install script to fail closed on the missing file.
      */
     private fun stageMesaBundle() {
         val dest = guestFile(GpuDrivers.MESA_ZINK_BUNDLE)

@@ -77,6 +77,24 @@ private val COMPONENTS =
             source = "https://github.com/termux/libandroid-shmem/tree/v0.7",
         ),
         Component(
+            "Mesa",
+            "OpenGL on Adreno GPUs in the optional Linux system",
+            "mit",
+            "Copyright (C) 1999-2007 Brian Paul and the Mesa contributors. Mesa 26.2.4 with omalauncher's " +
+                "zink patch. Most files are MIT; the rest are under the permissive licenses in Mesa's licenses/ directory.",
+            "https://mesa3d.org",
+            source = "https://github.com/SimonSchubert/omalauncher/tree/main/scripts/mesa",
+        ),
+        Component(
+            "wayland-protocols",
+            "protocol files bundled with Mesa",
+            "mit",
+            "Copyright © 2008-2013 Kristian Høgsberg\nCopyright © 2010-2013 Intel Corporation\n" +
+                "Copyright © 2013 Rafael Antognolli\nCopyright © 2013 Jasper St. Pierre\nCopyright © 2014 Jonas Ådahl\n" +
+                "Copyright © 2014 Jason Ekstrand\nCopyright © 2014-2015 Collabora, Ltd.\nCopyright © 2015 Red Hat Inc.",
+            "https://gitlab.freedesktop.org/wayland/wayland-protocols",
+        ),
+        Component(
             "Omarchy",
             "theme colors bundled for first run",
             "mit",

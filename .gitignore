@@ -8,8 +8,6 @@ local.properties
 .kotlin/
 # fetched by scripts/fetch-proot.sh
 app/src/main/jniLibs/
-# aarch64 Mesa build output, staged into the test APK, not the git repo
-app/src/main/assets/mesa-zink/
 # fastlane
 fastlane/play-store-key.json
 fastlane/report.xml
