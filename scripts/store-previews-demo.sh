@@ -3,7 +3,7 @@
 # otherwise only say how to set them up. `gh` answers like a signed-in account, Home
 # Assistant's states are files that curl reads, `curl` answers Cursor's dashboard, and
 # the Tesla tile reads its own fixture, go-limit reads an OpenCode database, `python3` answers
-# google-calendar's feed script, and two sleeping `claude` processes stand in for claude-top's
+# google-calendar's feed script and lastfm's helper, and two sleeping `claude` processes stand in for claude-top's
 # Claude Code instances. `python` answers
 # codex-quota's and photoprism-random's scripts, widget-maker finds its script set up and a
 # draft waiting, and `ssh` streams a Flipper menu to flipper-zero. `agy` answers agy-limits, agenda
@@ -131,10 +131,24 @@ events.append({"t": "Mia's birthday", "l": "", "c": 0, "d": (day + timedelta(day
 events.sort(key=lambda x: (x["d"], x["s"]))
 print(json.dumps({"events": events, "errors": {}, "names": {"0": "Personal", "1": "Work"}}, ensure_ascii=False))
 PY
+# A Last.fm listener for abinanthankv's lastfm: one track playing, the rest scrobbled earlier.
+cat > "$demo/lastfm.py" <<'PY'
+import json, time
+now = int(time.time())
+played = [("Radiohead", "Weird Fishes/Arpeggi", 0), ("Bonobo", "Kerala", 4), ("Khruangbin", "Maria También", 9),
+          ("Phoebe Bridgers", "Motion Sickness", 13), ("Tame Impala", "Let It Happen", 21), ("Fleetwood Mac", "Dreams", 29),
+          ("Daft Punk", "Digital Love", 34), ("Massive Attack", "Teardrop", 40), ("Beach House", "Space Song", 46),
+          ("Nick Drake", "Pink Moon", 52)]
+tracks = [{"artist": a, "title": t, "url": "https://www.last.fm/music/" + a.replace(" ", "+"),
+           "at": now - m * 60, "nowplaying": m == 0, "art": ""} for a, t, m in played]
+print(json.dumps({"tracks": tracks, "stats": {"scrobbles": 48213, "artists": 2147, "albums": 4380, "tracks": 11952,
+                  "url": "https://www.last.fm/user/demo"}}, ensure_ascii=False))
+PY
 cat > /usr/local/bin/python3 <<'EOF'
 #!/bin/sh
 case "$*" in
   *owl-gcal*) exec /usr/bin/python3 /tmp/store-previews-demo/gcal.py ;;
+  *lastfm.py\ fetch*) exec /usr/bin/python3 /tmp/store-previews-demo/lastfm.py ;;
   *) exec /usr/bin/python3 "$@" ;;
 esac
 EOF
