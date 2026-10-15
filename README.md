@@ -1,11 +1,19 @@
-# Omalauncher
+# Omalauncher+
+
+A fork of [SimonSchubert/omalauncher](https://github.com/SimonSchubert/omalauncher),
+based on upstream **0.7.2** (versionCode 14). Everything upstream does, plus a
+few features below. It installs **side by side** with the original: applicationId
+`dev.omalauncher.plus`, label **Omalauncher+**.
+
+Upstream PRs, each with only its feature: swipe down →
+[#119](https://github.com/SimonSchubert/omalauncher/pull/119),
+icon packs + icon size →
+[#121](https://github.com/SimonSchubert/omalauncher/pull/121).
 
 An Android home screen with the look of [Omarchy](https://omarchy.org), and an
 optional Arch Linux ARM system next to your phone apps. Omalauncher runs the
 system under proot, without root, and is its Wayland compositor: every Linux
 window opens as its own Android task, with its own card in Recents.
-
-<a href="https://play.google.com/store/apps/details?id=dev.omalauncher"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80"></a>
 
 ![The home screen in twelve Omarchy themes, each with different widgets](art/collage.png)
 
@@ -31,16 +39,62 @@ window opens as its own Android task, with its own card in Recents.
 Needs an arm64 phone with Android 10 or newer. Without Linux, the launcher still
 has the themes, wallpapers, Android apps and the widgets that don't run commands.
 
+## What's new in this fork
+
+### Swipe down for notifications
+
+Swiping down anywhere on home pulls down Android's notification shade, like
+stock launchers. Both directions are configurable in settings › gestures:
+swipe up and swipe down each open the app drawer, the notifications, or do
+nothing. The original swipe-up drawer behavior is unchanged by default.
+
+### Custom icon packs and icon size
+
+Settings › icon pack lists third-party icon packs installed on the phone
+(Nova, ADW, GO, Apex, Tesla, Fede, Motorola and Sony theme actions). Picking
+one redraws every app icon from the pack: component mapping, scale, iconback,
+iconmask and iconupon layers from the pack's `appfilter.xml` are all honored,
+and the monochrome icon style still works off the pack's icons. Apps the pack
+has nothing for keep their own icons.
+
+Packs that draw small stay readable too: settings › icon size scales the icon
+slot (small 0.8x, normal 1x, large 1.25x) in the drawer, the recent strip, the
+shortcut menu and the pin dialog, and re-renders app icons at the new size.
+
+### A bar that also searches
+
+Typing in the bottom bar used to show one echo row (`ask <agent>: <text>`).
+The echo is gone — Enter in the bar asks the agent by default — and two action
+rows take its place above the bar, store over web:
+
+- **search web** opens the query in the default browser,
+- **search store** opens it in the Play app (its site when Play is absent) or
+  on F-Droid.
+
+The bar's button says what Enter does (`⏎ ask`, `⌕ web`, `⌕ store`, `▸ open`),
+and Tab/arrows walk apps, store, web and the agent's ask. Settings › search
+picks the web engine (Google by default, DuckDuckGo, Bing, or a custom URL with
+`{q}` for the query) and the store (Play or F-Droid).
+
+### Coding agent installs that work
+
+npm-based agents (OpenCode, Grok, Kimi) install with plain `npm install -g`
+after mise sets up Node, instead of mise's npm backend (current mise passes an
+empty `--before` flag that fails the install). Install scripts are re-enabled
+so packages whose binary comes from a postinstall (OpenCode) actually get it;
+a broken copy left by an earlier attempt is reinstalled from scratch.
+
 ## Using it
 
 The bar: the one input at the bottom of the home screen opens apps and asks
 coding agents. Focusing it opens the list of Linux and Android apps; typing
-narrows the list, and Enter opens the highlighted app or sends the text to the
-agent. Short queries that name an app open it, sentences go to the agent; Tab
-and the arrow keys move the highlight. Tap the agent's name to pick another
-installed one; the choice is saved in `~/.config/omalauncher/agent`. Hold the mic to talk and release to send, or tap it to dictate
-into the field. Speech is recognized by Android (on the device when the phone
-supports it), so only text reaches Linux.
+narrows the list. Enter opens the highlighted app, searches the highlighted
+row's target, or sends the text to the agent; Tab and the arrow keys move the
+highlight. Short queries that name an app open it, sentences go to the agent.
+Tap the agent's name to pick another installed one; the choice is saved in
+`~/.config/omalauncher/agent`. Hold the mic to talk and release to send, or tap
+it to dictate into the field. Speech is recognized by Android (on the device
+when the phone supports it), so only text reaches Linux.
 
 Touch input in Linux windows: tap is a left click, long press is a right
 click, drag scrolls; apps with touch support (foot, GTK) get real touch.
@@ -51,17 +105,22 @@ and Super+W (close) in Linux windows.
 ## Building
 
 ```sh
-./scripts/fetch-proot.sh          # Termux's proot -> app/src/main/jniLibs (needs bsdtar)
+./scripts/fetch-proot.sh          # Termux's proot -> app/src/main/jniLibs (needs bsdtar and NDK 30.0.16248370)
 ./gradlew :app:installDebug
 # optional: skip the 830 MB download on the device
-adb push ArchLinuxARM-aarch64-latest.tar.gz /sdcard/Android/data/dev.omalauncher/files/
+adb push ArchLinuxARM-aarch64-latest.tar.gz /sdcard/Android/data/dev.omalauncher.plus/files/
 ```
+
+`fetch-proot.sh` is required: without `app/src/main/jniLibs/arm64-v8a`
+(`libproot.so` and friends) the APK builds but Linux can't start (`Cannot run
+program ... libproot`). The directory is git-ignored; every fresh checkout
+needs the script before building.
 
 Tests: `./gradlew :owl:test :app:testDebugUnitTest`. `./gradlew :owl:owlJar`
 builds `owl/build/cli/owl.jar`, the checker the widget store's CI runs.
 
 In debug builds you can launch guest commands with
-`adb shell am start -n dev.omalauncher/.MainActivity --es exec foot`.
+`adb shell am start -n dev.omalauncher.plus/.MainActivity --es exec foot`.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the compositor, rendering, GPU
   acceleration, and how updates reach existing installs
@@ -88,4 +147,5 @@ LGPL-3.0 and BSD-3-Clause, prebuilt by Termux), listed in the app under
 settings › licenses.
 
 Omalauncher is an independent project and is not affiliated with or endorsed
-by Omarchy, Arch Linux, or the makers of the coding agents it installs.
+by Omarchy, Arch Linux, or the makers of the coding agents it installs. This
+fork is not affiliated with or endorsed by the upstream Omalauncher project.
