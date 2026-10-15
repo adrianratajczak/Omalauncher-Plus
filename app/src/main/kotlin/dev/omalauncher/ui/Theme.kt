@@ -189,15 +189,29 @@ fun Modifier.frame(
     radius: Dp = 16.dp,
 ): Modifier {
     val shape = LauncherStyle.shape(radius)
-    // Omalauncher+'s halo: a translucent accent ring outside the border. Drawn before the clip, so it isn't cut.
+    // Omalauncher+'s halo: three soft rings fading outward, a cheap blurred glow. Drawn before the clip, so it isn't cut.
     val glow =
         if (PlusPrefs.glow && width > 0.dp) {
+            val base = radius * LauncherStyle.cornerScale
+            val accent = Palette.accent
             Modifier.drawBehind {
                 drawRoundRect(
-                    color = Palette.accent.copy(alpha = 0.22f),
+                    color = accent.copy(alpha = 0.30f),
                     size = size,
-                    cornerRadius = CornerRadius((radius * LauncherStyle.cornerScale + 4.dp).toPx()),
-                    style = Stroke((width + 8.dp).toPx()),
+                    cornerRadius = CornerRadius((base + 2.dp).toPx()),
+                    style = Stroke((width + 4.dp).toPx()),
+                )
+                drawRoundRect(
+                    color = accent.copy(alpha = 0.14f),
+                    size = size,
+                    cornerRadius = CornerRadius((base + 5.dp).toPx()),
+                    style = Stroke((width + 10.dp).toPx()),
+                )
+                drawRoundRect(
+                    color = accent.copy(alpha = 0.07f),
+                    size = size,
+                    cornerRadius = CornerRadius((base + 8.dp).toPx()),
+                    style = Stroke((width + 16.dp).toPx()),
                 )
             }
         } else {
