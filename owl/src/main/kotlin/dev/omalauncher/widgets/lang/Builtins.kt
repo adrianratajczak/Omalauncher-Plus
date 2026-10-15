@@ -1,5 +1,6 @@
 package dev.omalauncher.widgets.lang
 
+import java.net.URLEncoder
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -317,6 +318,8 @@ object Builtins {
             "replace" to Builtin(3, 3) { a -> Str(a.str(0).replace(a.str(1), a.str(2))) },
             // owl 6: a value as one shell word, for commands put together while the widget runs.
             "sh" to Builtin(1, 1) { a -> Str(shQuote(a[0].let { if (it == Null) "" else it.text() })) },
+            // owl 8: a value as one URL component, for http(...) URLs put together while the widget runs.
+            "enc" to Builtin(1, 1) { a -> Str(URLEncoder.encode(a[0].let { if (it == Null) "" else it.text() }, "UTF-8").replace("+", "%20")) },
             "startsWith" to Builtin(2, 2) { a -> bool(a.str(0).startsWith(a.str(1))) },
             "endsWith" to Builtin(2, 2) { a -> bool(a.str(0).endsWith(a.str(1))) },
             "contains" to

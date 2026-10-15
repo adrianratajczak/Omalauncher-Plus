@@ -51,7 +51,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -552,7 +556,10 @@ class WidgetInstance(
     }
 
     /** Every source has a value; what a preview waits for. Reads state, so it can be observed. */
-    fun loaded() = program.globals.indices.all { program.globals[it] !is Global.Source || read(it) != Null }
+    fun loaded() = program.globals.indices.all { program.globals[it] !is Global.Source || read(it) != Null || paused[it] == true }
+
+    /** Sources whose command or URL is null: they wait without a value, and count as loaded. */
+    private val paused = mutableStateMapOf<Int, Boolean>()
 
     /** Bumped by refresh(); each source loop wakes early when it changes. */
     private val refreshes = MutableStateFlow(0)
@@ -592,6 +599,11 @@ class WidgetInstance(
             if (g !is Global.Source) return@forEachIndexed
             jobs +=
                 scope.launch {
+                    // The command or URL a cmd or http source last ran, and when; whether it must run again now.
+                    var last: Value? = null
+                    var lastAt = 0L
+                    var lastWait = 0L
+                    var due = true
                     while (isActive) {
                         snapshotFlow { active() }.first { it }
                         if (g.optional && !linux()) {
@@ -627,15 +639,32 @@ class WidgetInstance(
                                 }
                             else -> {
                                 val seen = refreshes.value
-                                val start = System.currentTimeMillis()
-                                update(slot, g)
+                                val built = g.arg?.takeIf { it.const == null }
+                                val arg = built?.let { eval(it, root, g.name) }
+                                if (arg == Null) {
+                                    // A null command or URL pauses the source, keeping its value, until it's something again.
+                                    paused[slot] = true
+                                    untilPaused(active, g) { snapshotFlow { eval(built, root, g.name) }.first { it != Null } }
+                                    paused.remove(slot)
+                                    due = false
+                                    continue
+                                }
                                 // An interval of NaN ("NaN" is a number) would be 0: a % by zero for a clock, a busy loop otherwise.
                                 val wait = (g.every * 1000).toLong().coerceAtLeast(100)
+                                // Back to what it last ran, within the interval (a tab shown again): its value still holds.
+                                if (due || arg != last || System.currentTimeMillis() >= lastAt + lastWait) {
+                                    last = arg
+                                    lastAt = System.currentTimeMillis()
+                                    // A failed fetch (offline, or a server's rate limit) is tried again in half a minute.
+                                    lastWait = if (update(slot, g)) wait else minOf(wait, RETRY_MS)
+                                }
                                 // Clocks tick on the second (or minute) boundary so displays change in step;
                                 // other intervals count from the start of the update, however long it took.
-                                val target = if (g.kind == "clock") wait - System.currentTimeMillis() % wait else (start + wait - System.currentTimeMillis()).coerceAtLeast(0)
-                                // Sleeps until the interval is up, or a refresh() wakes it early.
-                                withTimeoutOrNull(target) { refreshes.first { it != seen } }
+                                val target = if (g.kind == "clock") wait - System.currentTimeMillis() % wait else (lastAt + lastWait - System.currentTimeMillis()).coerceAtLeast(0)
+                                // Sleeps until the interval is up, a refresh() wakes it early, or what it runs changes
+                                // (a coin tapped, a tab opened): then it runs at once, not at the next interval.
+                                val changed = built?.let { snapshotFlow { eval(it, root, g.name) }.filter { v -> v != arg }.map { false } } ?: emptyFlow()
+                                due = withTimeoutOrNull(target) { merge(refreshes.filter { it != seen }.map { true }, changed).first() } ?: true
                             }
                         }
                     }
@@ -836,10 +865,12 @@ class WidgetInstance(
         if (persisted.isNotEmpty()) save(persisted.map { read(it) })
     }
 
+    /** Runs [g] and writes its value; false when an http fetch failed, so it's tried again soon. */
     private suspend fun update(
         slot: Int,
         g: Global.Source,
-    ) {
+    ): Boolean {
+        var fetched = true
         val value: Value =
             when (g.kind) {
                 "clock" -> Num(Math.floor(System.currentTimeMillis() / 1000.0))
@@ -854,6 +885,7 @@ class WidgetInstance(
                                 services.cmd(target, g.timeout)
                             }
                         val out = if (g.json) Json.parseOrText(r.out) else Str(r.out)
+                        fetched = g.kind != "http" || ok(g, r)
                         if (g.status) {
                             Obj(mapOf("out" to out, "err" to Str(r.err), "code" to Num(r.code.toDouble()), "ok" to bool(ok(g, r))))
                         } else {
@@ -863,7 +895,7 @@ class WidgetInstance(
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
                         report("${g.name}: ${e.message}")
-                        return
+                        return g.kind != "http"
                     }
                 }
                 else ->
@@ -871,11 +903,12 @@ class WidgetInstance(
                         services.android(g.kind.removePrefix("android."))
                     } catch (e: RuntimeException) {
                         report("${g.name}: ${e.message ?: e}")
-                        return
+                        return true
                     }
             }
         write(slot, value)
         sample(g)
+        return fetched
     }
 
     /**
@@ -957,6 +990,9 @@ class WidgetInstance(
 
         /** Distinct bitmaps kept per widget. */
         private const val MAX_IMAGES = 32
+
+        /** How soon a failed http fetch is tried again, if its interval is longer. */
+        private const val RETRY_MS = 30_000L
 
         /** Distinct SVGs kept per widget; each is drawing commands, a few KB. */
         private const val MAX_VECTORS = 128

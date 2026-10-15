@@ -110,8 +110,8 @@ class Compiler private constructor(
                 listOf("Input.focus", "sh", "corners").associateWith { 6 } +
                 // owl 7: more of the phone, without new permissions.
                 listOf("android.alarm", "android.modes", "torch", "share", "haptic").associateWith { 7 } +
-                // owl 8: apps, files that aren't tiles; the phone's apps as a list; images and sounds from the web.
-                listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound").associateWith { 8 }
+                // owl 8: apps, files that aren't tiles; the phone's apps as a list; images and sounds from the web; values in URLs.
+                listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc").associateWith { 8 }
 
         private const val WEB_IMAGE = "an image from the web"
 
@@ -166,6 +166,9 @@ class Compiler private constructor(
         private val NUMBERS = setOf("int", "round", "floor", "ceil", "abs", "fixed", "len", "count", "sum", "min", "max", "clamp")
 
         private const val MAX_SHAPES = 8
+
+        /** A URL whose scheme and host are fixed text, so no value can send it elsewhere. */
+        private val FIXED_HOST = Regex("""^https?://[A-Za-z0-9.-]+(:[0-9]+)?/""")
 
         /**
          * Whether bash reads every [VALUE] in [shape] as the quoted word sh(...) made it: not inside quotes,
@@ -486,18 +489,22 @@ class Compiler private constructor(
     private fun shapes(
         e: Expr,
         s: Scope,
+        value: String = "sh",
     ): List<String>? {
-        ex(e, s).const?.let { c -> return if (c is Str || c is Num) listOf(c.toString()) else null }
+        ex(e, s).const?.let { c ->
+            // A URL that's null pauses its source: no shape.
+            return if (c is Str || c is Num) listOf(c.toString()) else if (c == Null && value == "enc") emptyList() else null
+        }
         fun join(
             a: List<String>,
             b: List<String>,
         ) = a.flatMap { x -> b.map { x + it } }
         val out =
             when (e) {
-                is Expr.Interp -> e.parts.fold(listOf("")) { acc, p -> join(acc, shapes(p, s) ?: return null) }
-                is Expr.Binary -> if (e.op == "+") join(shapes(e.a, s) ?: return null, shapes(e.b, s) ?: return null) else null
-                is Expr.Cond -> (shapes(e.a, s) ?: return null) + (shapes(e.b, s) ?: return null)
-                is Expr.Call -> if (e.name == "sh") listOf(VALUE) else if (e.name in NUMBERS) listOf(NUMBER) else null
+                is Expr.Interp -> e.parts.fold(listOf("")) { acc, p -> join(acc, shapes(p, s, value) ?: return null) }
+                is Expr.Binary -> if (e.op == "+") join(shapes(e.a, s, value) ?: return null, shapes(e.b, s, value) ?: return null) else null
+                is Expr.Cond -> (shapes(e.a, s, value) ?: return null) + (shapes(e.b, s, value) ?: return null)
+                is Expr.Call -> if (e.name == value) listOf(VALUE) else if (e.name in NUMBERS) listOf(NUMBER) else null
                 else -> null
             }
         return out?.distinct()?.takeIf { it.size <= MAX_SHAPES }
@@ -583,7 +590,9 @@ class Compiler private constructor(
                 if (e.args.size !in 1..2 || e.named.isNotEmpty()) fail("http(\"https://...\") takes a URL and optionally a map of headers", e.pos)
                 val url = ex(e.args[0], root)
                 (url.const as? Str)?.v?.let { if (!it.startsWith("https://") && !it.startsWith("http://")) fail("http takes an http:// or https:// URL", e.args[0].pos) }
-                commands += "http GET " + ((url.const as? Str)?.v ?: "(a URL built from widget values)")
+                // Like a command's sh(...) values: listed by shape when the host is fixed and each value is enc(...) or a number.
+                val shapes = (url.const as? Str)?.let { listOf(it.v) } ?: shapes(e.args[0], root, "enc")?.takeIf { it.isNotEmpty() && it.all { s -> FIXED_HOST.containsMatchIn(s) } }
+                if (shapes == null) commands += "http GET (a URL built from widget values)" else shapes.forEach { commands += "http GET $it" }
                 Global.Source(d.name, "http", url, (every ?: 60.0).coerceAtLeast(5.0), d.json, timeout.coerceIn(1, 300), d.status, e.args.getOrNull(1)?.let { ex(it, root) })
             }
             e is Expr.Call && e.name in setOf("cmd", "stream") -> {

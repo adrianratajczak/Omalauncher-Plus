@@ -64,7 +64,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 |---|---|
 | `source x = cmd("...") every 5s` | runs a bash command in this Arch system; `x` is its output (stdout, trimmed). Add `json` to parse JSON output, `timeout 30s` to allow more than 10 s, `status` to get `{out, err, code, ok}` instead (see below), `optional` to let the widget work without Linux (see Without Linux). Default interval: 60 s |
 | `source x = stream("...")` | a long-running command; every line it prints becomes the new value. Add `json` for JSON lines. At most 4 different streams run at once |
-| `source x = http("https://...") every 10m` | an HTTP GET from Android, no curl or shell needed. Takes `json`, `timeout` and `status` like cmd (with `status`, `code` is the HTTP status and `ok` means 2xx), and optionally headers: `http(url, {Accept: "application/json"})`. The response is capped at 1 MB and the interval at 5 s or more. Prefer it over `cmd("curl ...")` |
+| `source x = http("https://...") every 10m` | an HTTP GET from Android, no curl or shell needed. Takes `json`, `timeout` and `status` like cmd (with `status`, `code` is the HTTP status and `ok` means 2xx), and optionally headers: `http(url, {Accept: "application/json"})`. The response is capped at 1 MB and the interval at 5 s or more. Prefer it over `cmd("curl ...")`. A URL can hold values, through `enc()` (see Values in URLs); it's fetched again as soon as it changes, and a `null` URL pauses the source, keeping its last value: `http(tab == "news" ? "https://..." : null)` fetches only while that tab shows. A failed fetch (offline, an error status, a rate limit) is tried again after 30 s |
 | `source x = file("~/.cache/x.json")` | a file in this system, read again whenever it changes (no polling, no shell). Add `json` to parse it. A missing file reads as `""`; at most 1 MB is read. Prefer it over `cmd("cat ...") every 5s` (owl 4) |
 | `source now = clock every 1s` | Unix time in seconds, with no shell involved. Use `fmtTime(now, "HH:mm")` |
 | `source bat = android.battery` | `{level, charging, status, temp, voltage, health, plugged, technology, cycles}` from Android, updated as it changes (`temp` in °C, `voltage` in V; `health`, `plugged`, `technology` and `cycles` are null when the phone doesn't say) |
@@ -84,7 +84,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, images from the web and `sound` 8; using them without declaring it is an error |
+| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, images from the web and `sound` 8; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -104,8 +104,8 @@ add `status`: then `x.out` is the output (parsed with `json`), `x.err` is stderr
 source w = cmd("curl -sf wttr.in/?format=j1") every 30m json timeout 20s status
 Text { text: w == null ? "…" : w.ok ? "${w.out.current_condition[0].temp_C}°" : "offline" }
 ``` Keep commands fast. A command
-can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and re-runs with the new
-value at its next interval.
+can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and re-runs as soon as the
+value changes.
 
 ## Values in commands
 
@@ -123,6 +123,21 @@ Work on the value inside `sh()`: `${sh(upper(title))}`. Numbers from `int`, `rou
 `ceil`, `abs`, `fixed`, `len`, `count`, `sum`, `min`, `max` and `clamp` need no `sh()`. A command
 with a heredoc (`<<`) can't take values. The widget store only takes commands built this way;
 one shared as a link shows a warning instead.
+
+## Values in URLs
+
+The same holds for `http(...)`: put a value into its URL with `enc(value)`, which percent-encodes
+it, so a `/`, `?`, `&` or `#` in it can't change the path or add parameters, and keep the scheme
+and host fixed text (owl 8):
+
+```
+source coin = http("https://api.example.com/coins/${enc(id)}?days=${int(days)}") json   // right
+source coin = http("https://api.example.com/coins/${id}") json                          // wrong: not through enc()
+source coin = http("https://${enc(host)}/coins") json                                   // wrong: the host is a value
+```
+
+The store lists such a URL with `‹value›` where each value goes, and one built any other way as
+fetching "a URL put together while the widget runs".
 
 ## Triggers
 
@@ -170,7 +185,7 @@ second is held back and reported (one that changes what it watches would otherwi
 | functions | |
 |---|---|
 | numbers | `min max clamp(x, lo, hi) lerp(a, b, t) round(x, digits) floor ceil abs sqrt pow sin cos tan atan2 rad deg sign num(x, default) int` |
-| text | `sh(x)` (one shell word, see Values in commands) `str len trim upper lower lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
+| text | `sh(x)` (one shell word, see Values in commands), `enc(x)` (one URL component, see Values in URLs) `str len trim upper lower lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
 | format | `fmtBytes(n)` → `1.5G`, `fmtDuration(seconds)` → `2h 5m`, `fmtTime(seconds, "EEE HH:mm")` |
 | weather | `weatherIcon(code, night)`: omarchy's weather glyph for a wttr.in `weatherCode` (show it with `font: icon`) |
 | parsing | `match(s, regex)` (groups of the first match), `matchAll(s, regex)`, `parseJson(s)` |
