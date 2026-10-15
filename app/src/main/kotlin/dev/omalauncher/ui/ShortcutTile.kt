@@ -96,8 +96,14 @@ fun ShortcutTile(
 /** Whether a tile is tall enough to fit its label under the icon. */
 internal fun BoxWithConstraintsScope.showsLabel() = maxHeight > 64.dp
 
-/** An app tile's icon edge, leaving room for the label when [label]. Bare icons have no frame to fill, so they take nearly the whole cell. */
-internal fun BoxWithConstraintsScope.tileIconSize(label: Boolean) = min(maxWidth, maxHeight - if (label) 18.dp else 0.dp) * if (LauncherStyle.bareAppIcons) 0.95f else 0.85f
+/**
+ * An app tile's icon edge, leaving room for the label when [label]. Bare icons have no frame to fill, so they
+ * take nearly the whole cell, as does a folder's grid of small icons with [full].
+ */
+internal fun BoxWithConstraintsScope.tileIconSize(
+    label: Boolean,
+    full: Boolean = LauncherStyle.bareAppIcons,
+) = min(maxWidth, maxHeight - if (label) 18.dp else 0.dp) * if (full) 0.95f else 0.85f
 
 /** How opaque an app from a paused work profile is drawn. */
 internal const val PausedAlpha = 0.4f

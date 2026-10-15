@@ -10,21 +10,40 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -40,7 +59,7 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-/** A folder on the home grid: its first four apps in a 2x2 badge, and its name under it like an app's. */
+/** A folder on the home grid: its first four apps in a 2x2 grid the size of an app's icon, and its name under it like an app's. */
 @Composable
 fun FolderTile(
     folder: Folder,
@@ -60,25 +79,21 @@ fun FolderTile(
             .padding(4.dp),
     ) {
         val showLabel = showsLabel()
-        val badge = tileIconSize(showLabel)
+        val badge = tileIconSize(showLabel, full = true)
         Column(
             Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
         ) {
-            Box(
-                Modifier.size(badge).clip(LauncherStyle.shape(badge / 3)).background(Palette.surface),
-                contentAlignment = Alignment.Center,
-            ) {
-                val mini = badge * 0.36f
-                Column(verticalArrangement = Arrangement.spacedBy(badge * 0.06f)) {
-                    for (row in 0 until 2) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(badge * 0.06f)) {
-                            for (col in 0 until 2) {
-                                val i = row * 2 + col
-                                Box(Modifier.size(mini), contentAlignment = Alignment.Center) {
-                                    labels.getOrNull(i)?.let { AppGlyph(it, icons.getOrNull(i), mini) }
-                                }
+            // Straight on the tile, filling an app icon's room.
+            val mini = badge * 0.47f
+            Column(verticalArrangement = Arrangement.spacedBy(badge * 0.06f)) {
+                for (row in 0 until 2) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(badge * 0.06f)) {
+                        for (col in 0 until 2) {
+                            val i = row * 2 + col
+                            Box(Modifier.size(mini), contentAlignment = Alignment.Center) {
+                                labels.getOrNull(i)?.let { AppGlyph(it, icons.getOrNull(i), mini) }
                             }
                         }
                     }
@@ -154,7 +169,8 @@ internal class FolderGeometry(
 
 /**
  * An open folder over the home grid: a scrim, the panel with the folder's name and its apps drawn by [render].
- * Taps, long-presses and drags are [HomeGrid]'s, like every touch on home.
+ * Taps, long-presses and drags are [HomeGrid]'s, like every touch on home. While [naming], the name is a text
+ * field in the same place, saved through [onName] as it's typed.
  */
 @Composable
 internal fun FolderPanel(
@@ -163,6 +179,10 @@ internal fun FolderPanel(
     render: @Composable (HomeItem, Modifier, Boolean) -> Unit,
     /** The app a finger is dragging, if it's one of these: its place stays empty while the others sort around it. */
     carried: String? = null,
+    naming: Boolean = false,
+    onName: (String) -> Unit = {},
+    /** Typing the name is over: Done, or the field went away. */
+    onNamed: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     Box(Modifier.fillMaxSize().zIndex(4f).background(Palette.overlay.copy(alpha = 0.6f))) {
@@ -181,12 +201,43 @@ internal fun FolderPanel(
                 .padding(start = 16.dp, end = 16.dp, top = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
-            BasicText(
-                folder.name ?: "name this folder",
-                style = Mono.copy(color = if (folder.name == null) Palette.muted else Palette.foreground, fontSize = TextSize.Item),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val style = Mono.copy(color = Palette.foreground, fontSize = TextSize.Item, textAlign = TextAlign.Center)
+            if (naming) {
+                // Same box, style and centre as the label it replaces, so nothing moves.
+                var text by remember(folder.key) { mutableStateOf(folder.name.orEmpty().let { TextFieldValue(it, TextRange(it.length)) }) }
+                val focus = remember { FocusRequester() }
+                var focused by remember { mutableStateOf(false) }
+                val focusManager = LocalFocusManager.current
+                LaunchedEffect(Unit) { focus.requestFocus() }
+                DisposableEffect(Unit) { onDispose(onNamed) }
+                BasicTextField(
+                    value = text,
+                    onValueChange = {
+                        if (it.text != text.text) onName(it.text)
+                        text = it
+                    },
+                    singleLine = true,
+                    textStyle = style,
+                    cursorBrush = SolidColor(Palette.accent),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focus)
+                            .onFocusChanged {
+                                if (focused && !it.isFocused) onNamed()
+                                focused = it.isFocused
+                            },
+                )
+            } else {
+                BasicText(
+                    folder.name ?: "tap to name",
+                    style = if (folder.name == null) style.copy(color = Palette.muted) else style,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         folder.apps.forEachIndexed { i, app ->
             if (app.key == carried) return@forEachIndexed
