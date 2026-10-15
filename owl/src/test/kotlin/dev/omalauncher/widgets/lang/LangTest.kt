@@ -454,6 +454,14 @@ class LangTest {
         assertEquals(Str("center"), el.props["align"]!!.const)
     }
 
+    @Test fun enumWordsWinOverNamesTheyShadow() {
+        val p = Compiler.compile("widget {\n  source top = clock every 1m\n  component Stat(label) { Text { text: label; style: label } }\n  Row { align: top; Stat { label: \"cpu\" } }\n}")
+        val row = p.root.single() as WNode.Element
+        assertEquals(Str("top"), row.props["align"]!!.const)
+        val text = (row.children.single() as WNode.Use).body.single() as WNode.Element
+        assertEquals(Str("label"), text.props["style"]!!.const)
+    }
+
     @Test fun colorLiteralsAndHelpers() {
         val p = Compiler.compile("widget { Text { text: \"x\"; color: #ff000080 } }")
         val c = (p.root.single() as WNode.Element).props["color"]!!.const as Col

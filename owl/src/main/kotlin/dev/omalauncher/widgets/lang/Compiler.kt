@@ -785,7 +785,9 @@ class Compiler private constructor(
         scope: Scope,
     ): Ev? {
         val options = ENUMS[name] ?: return null
-        if (e is Expr.Name && e.name in options && lookup(e.name, scope) == null) return Ev.of(Str(e.name))
+        // The word, even when a let, state, source or parameter has its name: `align: top` beside
+        // `source top` aligns rows instead of reading (and stringifying) the source in every one.
+        if (e is Expr.Name && e.name in options) return Ev.of(Str(e.name))
         return null
     }
 

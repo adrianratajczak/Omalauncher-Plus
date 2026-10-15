@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.DrawStyle
@@ -75,7 +76,8 @@ internal fun CanvasNode(
     val measurer = rememberTextMeasurer(32)
     val inst = p.inst
     val solids = remember { HashMap<Int, SolidColor>() }
-    Canvas(modifier) {
+    // Its own layer: the drawing is replayed when something around it redraws, and only re-run when what it reads changes.
+    Canvas(modifier.graphicsLayer()) {
         val d = density
         val env = p.env.child(Num((size.width / d).toDouble()), Num((size.height / d).toDouble()))
         val painter = Painter(inst, measurer, this, d, solids)
