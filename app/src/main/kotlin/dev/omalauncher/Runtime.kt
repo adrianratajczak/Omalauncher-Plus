@@ -46,6 +46,7 @@ import dev.omalauncher.ui.IconPackStore
 import dev.omalauncher.ui.IconSize
 import dev.omalauncher.ui.PlusPrefs
 import dev.omalauncher.ui.Search
+import dev.omalauncher.ui.TintSource
 import dev.omalauncher.ui.finishIcon
 import dev.omalauncher.ui.KeyboardBridge
 import dev.omalauncher.ui.SettingsPage
@@ -154,6 +155,8 @@ class Runtime(
         // Saved, so removing Linux later doesn't bring the first-run screen back.
         if (launcherReady) prefs.edit().putBoolean(SETUP_DONE, true).apply()
         themes.loadPalette()
+        // A theme tint follows the accent: redraw the icons once its colors land, on every path that shows one.
+        themes.onApplied = { if (PlusPrefs.tintSource == TintSource.Theme) redrawAllIcons() }
         // An agent or the user edited style.toml; the rest of the style is read where it's drawn.
         style.onExternalChange = { old, new ->
             val changed = new.changed(old)

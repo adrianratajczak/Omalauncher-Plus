@@ -1,5 +1,8 @@
 package dev.omalauncher.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.foundation.pager.PagerState
@@ -65,6 +68,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toOffset
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -313,6 +317,8 @@ internal fun HomeGrid(
     /** The wallpaper for frosted tiles, and its parallax offset read while drawing. */
     wallpaper: ImageBitmap? = null,
     wallpaperOffset: () -> Float = { 0.5f },
+    /** Bumped on every home entry; tiles cascade in top-down, iOS-style. */
+    enterEpoch: Int = 0,
 ) {
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -650,7 +656,7 @@ internal fun HomeGrid(
                 Row(Modifier.fillMaxSize()) {
                     for (page in pagesAt(slot, pages, grid)) {
                         Box(Modifier.width(with(density) { grid.width.toDp() }).fillMaxHeight()) {
-                            TiledPage(page, itemsOn(page), layout, grid, arrange, selected, render, actions, onNoRoom, slot, pager, frost)
+                            TiledPage(page, itemsOn(page), layout, grid, arrange, selected, render, actions, onNoRoom, slot, pager, frost, enterEpoch)
                         }
                     }
                 }
@@ -688,6 +694,33 @@ internal fun HomeGrid(
             }
         }
     }
+}
+
+/**
+ * One tile cascading in with the rest: scale and fade, delayed by its row from
+ * the top. The layer redraws through the animation; nothing recomposes for it.
+ */
+@Composable
+private fun EnterTile(
+    epoch: Int,
+    order: Int,
+    content: @Composable (Modifier) -> Unit,
+) {
+    val t = remember { Animatable(1f) }
+    LaunchedEffect(epoch) {
+        if (epoch == 0) return@LaunchedEffect
+        delay((order * 35L).coerceAtMost(350))
+        t.snapTo(0.9f)
+        t.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+    }
+    content(
+        Modifier.graphicsLayer {
+            val v = t.value
+            scaleX = v
+            scaleY = v
+            alpha = ((v - 0.9f) / 0.1f).coerceIn(0f, 1f)
+        },
+    )
 }
 
 /**
@@ -739,13 +772,25 @@ private fun TiledPage(
     pager: PagerState,
     /** Frosted tiles, or null without a wallpaper to sample. */
     frost: FrostData?,
+    /** Bumped on every home entry; tiles cascade in top-down, iOS-style. */
+    enterEpoch: Int,
 ) {
     val density = LocalDensity.current
     val carried = arrange.carry?.item?.key
     // Every tile's rect, for frost and for drawing; the carried tile floats above instead.
-    val rects =
+    val keyed =
         items.mapNotNull { item ->
-            if (item.key == carried) null else layout.cell(item.key)?.let { grid.fit(it, item) }?.let { grid.rect(it) }
+            if (item.key == carried) {
+                null
+            } else {
+                layout.cell(item.key)?.let { grid.fit(it, item) }?.let { item.key to grid.rect(it) }
+            }
+        }
+    val rects = keyed.map { it.second }
+    // Cascade order: top row first, left to right, like iOS icons falling in.
+    val orderOf =
+        remember(keyed) {
+            keyed.sortedWith(compareBy({ it.second.top }, { it.second.left })).mapIndexed { order, (key, _) -> key to order }.toMap()
         }
     LaunchedEffect(items.map { it.key }, grid.cols, grid.rows) {
         layout.place(items, grid.cols, grid.rows).forEach(onNoRoom)
@@ -796,13 +841,16 @@ private fun TiledPage(
             val cell = layout.cell(item.key)?.let { grid.fit(it, item) } ?: continue
             val rect = grid.rect(cell)
             androidx.compose.runtime.key(item.key) {
-                render(
-                    item,
-                    Modifier
-                        .offset { IntOffset(rect.left, rect.top) }
-                        .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() }),
-                    selected == item.key || arrange.swapWith == item.key,
-                )
+                EnterTile(enterEpoch, orderOf[item.key] ?: 0) { enter ->
+                    render(
+                        item,
+                        Modifier
+                            .offset { IntOffset(rect.left, rect.top) }
+                            .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() })
+                            .then(enter),
+                        selected == item.key || arrange.swapWith == item.key,
+                    )
+                }
             }
         }
         // Selection frame: handles on each edge for widgets, plus the action bar.

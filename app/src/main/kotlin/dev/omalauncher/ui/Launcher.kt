@@ -103,15 +103,6 @@ private fun DesktopScreen(
             window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
         }
     }
-    // A theme tint follows the accent: redraw the icons once it lands, not on the way in.
-    var firstPalette by remember { mutableStateOf(true) }
-    LaunchedEffect(Palette.current) {
-        if (firstPalette) {
-            firstPalette = false
-            return@LaunchedEffect
-        }
-        if (PlusPrefs.tintSource == TintSource.Theme) runtime.redrawAllIcons()
-    }
     BackHandler {
         when {
             state.shared != null -> state.shared = null

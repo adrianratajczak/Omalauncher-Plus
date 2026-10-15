@@ -84,6 +84,8 @@ class ThemeStore(
     private val isLinux: () -> Boolean,
     /** Called when the guest configs depending on the theme changed; see [managed]. */
     private val onConfigChanged: () -> Unit,
+    /** Called after the theme's colors land, on every path that shows one. */
+    var onApplied: () -> Unit = {},
 ) {
     private val release = OmarchyRelease(LauncherData.omarchyDir(context))
     private val dirs = themeDirs(context)
@@ -404,6 +406,7 @@ class ThemeStore(
     ) {
         current = theme
         Palette.apply(theme.colors)
+        onApplied()
         showBackground(bg)
         if (!isLinux()) return
         withContext(Dispatchers.IO) {

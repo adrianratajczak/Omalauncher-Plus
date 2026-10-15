@@ -93,11 +93,14 @@ a broken copy left by an earlier attempt is reinstalled from scratch.
 
 Settings › omalauncher+ holds this fork's own extras, away from upstream's
 rows: the icon pack and icon size screens, icon shape (system, circle,
-squircle), grayscale and tint (a color, a top-to-bottom gradient, or the
-theme's accent), a switch hiding the Linux session notification (gone while
-idle, still shows installs and errors), a corner radius slider (theme, or 0
-to 60px over the whole launcher), and a blurred widget background switch.
-Long-pressing home also offers settings next to the themes.
+squircle), adaptive background on/off, grayscale, and tint (off, custom
+colors with an optional top-to-bottom duotone gradient, or the theme's
+accent, reapplied on every theme change); labels on/off for home and drawer;
+a switch hiding the Linux session notification (gone while idle, still shows
+installs and errors); a corner radius slider (theme, or 0 to 60px over the
+whole launcher); and a blurred widget background switch (per-tile frost
+sampling the wallpaper). Home tiles cascade in top-down on entry, drawer
+cells on open. Long-pressing home also offers settings next to the themes.
 
 ### Lockscreen (`lockscreen/`)
 

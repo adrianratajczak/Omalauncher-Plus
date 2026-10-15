@@ -8,6 +8,9 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -60,6 +63,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -70,6 +74,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -452,9 +457,12 @@ private fun HitCell(
     hit: AppHit,
     handlers: AppHandlers,
     selected: Boolean = false,
+    enterEpoch: Int = 0,
+    enterOrder: Int = 0,
+    enterArmed: Boolean = false,
 ) {
     val (icon, mask) = hit.icons(runtime)
-    AppCell(hit.label, icon, mask, onClick = { handlers.launch(hit) }, actions = { hit.actions(handlers) }, shortcuts = { hit.shortcutMenu(handlers) }, selected = selected, spoken = hit.spoken, paused = hit.paused(runtime))
+    AppCell(hit.label, icon, mask, onClick = { handlers.launch(hit) }, actions = { hit.actions(handlers) }, shortcuts = { hit.shortcutMenu(handlers) }, selected = selected, spoken = hit.spoken, paused = hit.paused(runtime), enterEpoch = enterEpoch, enterOrder = enterOrder, enterArmed = enterArmed)
 }
 
 /** Height of the recent apps strip; home keeps this much room for it above the bar, even while it's empty. */
@@ -682,6 +690,15 @@ internal fun AppPanel(
                         val listState = rememberLazyListState()
                         // New results start at the bar, where the best match is.
                         if (shown == null) LaunchedEffect(search) { listState.scrollToItem(0) }
+                        // Opening cascades the cells in, from the bar in search, top-down while browsing.
+                        var openEpoch by remember(shown) { mutableIntStateOf(0) }
+                        var armed by remember(shown) { mutableStateOf(false) }
+                        LaunchedEffect(shown) {
+                            openEpoch++
+                            armed = true
+                            delay(600)
+                            armed = false
+                        }
                         // A rail letter filters the browsed tabs; typing clears it and searches everything instead.
                         var railLetter by remember(shown) { mutableStateOf<Char?>(null) }
                         var railTouch by remember(shown) { mutableStateOf(false) }
@@ -704,6 +721,7 @@ internal fun AppPanel(
                             // The picked letter sits in the top-left corner until ★ clears it.
                             val corner = railLetter
                             var rows = 0
+                            var cascade = 0
                             LazyColumn(
                                 state = listState,
                                 reverseLayout = shown == null,
@@ -719,10 +737,11 @@ internal fun AppPanel(
                                             }
                                         is DrawerEntry.Cells -> {
                                             val selected = if (shown == null) highlighted - (rows++) * columns else -1
+                                            val order = cascade++
                                             item(key = entry.key, contentType = "row") {
                                                 Row(Modifier.fillMaxWidth()) {
                                                     entry.hits.forEachIndexed { i, hit ->
-                                                        Box(Modifier.weight(1f)) { HitCell(runtime, hit, handlers, selected = i == selected) }
+                                                        Box(Modifier.weight(1f)) { HitCell(runtime, hit, handlers, selected = i == selected, enterEpoch = openEpoch, enterOrder = order, enterArmed = armed) }
                                                     }
                                                     repeat(columns - entry.hits.size) { Spacer(Modifier.weight(1f)) }
                                                 }
@@ -902,13 +921,29 @@ private fun AppCell(
     spoken: String = label,
     /** As in [AppHit.paused]: drawn dimmed, like stock launchers. */
     paused: Boolean = false,
+    /** Cascades the cell in on drawer open, delayed by its row; armed only while opening. */
+    enterEpoch: Int = 0,
+    enterOrder: Int = 0,
+    enterArmed: Boolean = false,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
+    val enter = remember { Animatable(1f) }
+    LaunchedEffect(enterEpoch) {
+        if (enterEpoch == 0 || !enterArmed) return@LaunchedEffect
+        delay((enterOrder * 20L).coerceAtMost(300))
+        enter.snapTo(0.85f)
+        enter.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+    }
     Column(
         Modifier
             .fillMaxWidth()
-            .alpha(if (paused) PausedAlpha else 1f)
+            .graphicsLayer {
+                val v = enter.value
+                scaleX = v
+                scaleY = v
+                alpha = ((v - 0.85f) / 0.15f).coerceIn(0f, 1f) * if (paused) PausedAlpha else 1f
+            }
             .clip(LauncherStyle.shape(16.dp))
             .then(if (selected) Modifier.frame(2.dp, Palette.accent) else Modifier)
             .combinedClickable(
