@@ -84,6 +84,15 @@ empty `--before` flag that fails the install). Install scripts are re-enabled
 so packages whose binary comes from a postinstall (OpenCode) actually get it;
 a broken copy left by an earlier attempt is reinstalled from scratch.
 
+### Lockscreen (`lockscreen/`)
+
+A second app and APK in this repo: `dev.omalauncher.plus.lockscreen`, a clock
+over the system lock screen in the launcher's monospace voice. A foreground
+service watches for screen-off and raises it with a full-screen intent; swipe
+up dismisses the keyguard (with a PIN set, the system's PIN pad shows — the
+lockscreen never sees credentials). Blocks are added and removed in its setup:
+clock, date, battery level, and flashlight/camera shortcuts. No Linux needed.
+
 ## Using it
 
 The bar: the one input at the bottom of the home screen opens apps and asks
