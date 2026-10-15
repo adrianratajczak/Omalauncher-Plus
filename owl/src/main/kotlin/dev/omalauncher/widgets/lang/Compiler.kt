@@ -513,6 +513,8 @@ class Compiler private constructor(
         s: Scope,
         what: String,
     ) {
+        // Each way it can turn out: sound(voice ? "https://..." : null) plays that URL.
+        if (e is Expr.Cond) return listOf(e.a, e.b).forEach { webFile(it, s, what) }
         val whole = constText(e, s)
         val start = whole ?: constantStart(e, s)
         if (start.startsWith("http://")) fail("${what}s load over https only", e.pos)
@@ -539,11 +541,12 @@ class Compiler private constructor(
             else -> constText(e, s).orEmpty()
         }
 
-    /** [e]'s text if it's fixed: a literal, or a name for a top-level let that is one (`let base = "https://..."`). */
+    /** [e]'s text if it's fixed: a literal, a name for a top-level let that is one (`let base = "https://..."`), or "${base}a.svg". */
     private fun constText(
         e: Expr,
         s: Scope,
     ): String? {
+        if (e is Expr.Interp) return e.parts.map { constText(it, s) ?: return null }.joinToString("")
         val c = ex(e, s).const ?: (e as? Expr.Name)?.let { n -> (lookup(n.name, s) as? Ref.Slot)?.let { (globals[it.index] as? Global.Let)?.value?.const } }
         return if (c is Str || c is Num) c.toString() else null
     }

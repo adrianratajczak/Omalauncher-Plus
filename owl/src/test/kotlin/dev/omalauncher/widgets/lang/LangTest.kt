@@ -236,10 +236,11 @@ class LangTest {
                   every 5s { sound("${'$'}{base}${'$'}{id}.mp3") }
                   Button { text: "stop"; onTap: sound("stop") }
                   Button { text: "chime"; onTap: sound("~/chime.ogg") }
+                  Button { text: "done"; onTap: sound(id > 1 ? "${'$'}{base}done.mp3" : null) }
                 }
                 """.trimIndent(),
             )
-        assertEquals(listOf("sound GET https://x.test/audio/…"), p.commands)
+        assertEquals(listOf("sound GET https://x.test/audio/…", "sound GET https://x.test/audio/done.mp3"), p.commands)
         assertTrue(!p.needsLinux)
         assertTrue(compileError("widget {\nmeta { owl: 7 }\nonTap: sound(\"stop\")\nText { text: \"x\" }\n}").contains("sound needs owl 8"))
         assertTrue(compileError("app \"a\" {\nmeta { owl: 8 }\nButton { text: \"x\"; onTap: sound(\"http://x.test/a.mp3\") }\n}").contains("sounds load over https only"))

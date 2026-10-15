@@ -71,6 +71,18 @@ class MarketTest {
         assertTrue(risks("ssh host uptime; curl -s https://x.io").isEmpty())
     }
 
+    @Test fun appsGoUnderApps() {
+        val app = "app \"notes\" {\n  meta { owl: 8; description: \"notes on the phone\"; version: \"1.0\"; license: \"MIT\"; category: \"productivity\" }\n  Text { text: \"x\" }\n}"
+        val r = Review("apps/simon/notes/app.owl", app)
+        assertTrue(r.errors.isEmpty() && r.warnings.isEmpty())
+        assertEquals("simon/notes", r.id)
+        assertTrue(Review("widgets/simon/notes/widget.owl", app).errors.single().contains("it goes at apps/<author>/<name>/app.owl"))
+        assertTrue(Review("apps/simon/disk/app.owl", good).errors.single().contains("it goes at widgets/"))
+        val json = Catalog.write(listOf(r.entry(null)), "now", "apps")
+        assertEquals("simon/notes", Catalog.parse(json, "apps").single().id)
+        assertTrue(Catalog.parse(json).isEmpty())
+    }
+
     @Test fun webFilesFromAnyServerAreFlagged() {
         fun risks(cmd: String) = Review.risks(listOf(cmd))
         assertTrue(risks("image GET https://…").single().contains("server put together while the widget runs"))
