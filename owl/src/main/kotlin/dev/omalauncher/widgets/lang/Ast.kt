@@ -230,4 +230,22 @@ sealed interface Decl {
 class WidgetAst(
     val name: String?,
     val body: Body,
+    /** What the file is, from its first word: widget or app; see [OwlKind]. */
+    val kind: OwlKind = OwlKind.Widget,
 )
+
+/** What an owl file is: a home-screen tile or an app in the drawer. */
+enum class OwlKind(
+    val word: String,
+) {
+    Widget("widget"),
+    App("app"),
+    ;
+
+    companion object {
+        private val FIRST_WORD = Regex("""^(?:\s+|//[^\n]*|/\*[\s\S]*?\*/)*([A-Za-z_]\w*)""")
+
+        /** What [src] says it is by its first word, without compiling it: a file with errors still shows up where it belongs. */
+        fun of(src: String): OwlKind = FIRST_WORD.find(src)?.groupValues?.get(1)?.let { w -> entries.firstOrNull { it.word == w } } ?: Widget
+    }
+}

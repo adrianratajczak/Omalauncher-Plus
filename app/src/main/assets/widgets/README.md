@@ -1,8 +1,11 @@
-# Home-screen widgets
+# Home-screen widgets and apps
 
 Each `*.owl` file in this folder is a widget on the Android home screen,
-written in OWL, a small declarative language in the spirit of QML. Save a file
-and it appears within a second. Then run `owl-check <file>`:
+written in OWL, a small declarative language in the spirit of QML. Its first
+word says what it is: `widget "name" { }` is a home-screen tile, and
+`app "name" { }` an app in the app drawer that opens full screen (see Apps).
+Everything below is about widgets unless it says otherwise; apps are written
+the same way. Save a file and it appears within a second. Then run `owl-check <file>`:
 
 ```
 $ owl-check 50-memory.owl
@@ -10,7 +13,8 @@ $ owl-check 50-memory.owl
   preview: ~/.config/omalauncher/widgets/.preview/50-memory.owl.png (3x4 cells, 528x712 px, with live data); look at it to check the layout
 ```
 
-A widget with a `screen { }` (see Screens) gets a second picture, of the screen as it opens.
+A widget with a `screen { }` (see Screens) gets a second picture, of the screen as it opens. An
+app has no tile: its picture is the `screen:` line, of the whole view at the phone's size.
 
 It waits until the launcher has loaded the file as saved, prints compile errors
 and problems found while running, and exits 1 if there are any. The preview is
@@ -79,7 +83,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 7 }` | the language version the widget needs (this launcher has 7; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7; using them without declaring it is an error |
+| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files 8; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -302,6 +306,63 @@ widget "weather" {
 
 Screens are for showing more, not for building apps: there's no navigation between screens, no
 lists that load as they scroll, and only the nodes above (no maps, web pages or video).
+
+## Apps
+
+A file can also be an app instead of a widget: a screen of its own, listed in the app drawer.
+The nodes at the top are the whole view, with the room and limits of a `screen { }`, and it takes
+the same declarations as a widget (sources, state, lets, components, triggers, `requires`, `meta`).
+There's no tile, so no `size`, `minSize`, `page`, `order`, `padding`, `background`, `onTap` or
+`screen { }`; the properties are `title` and `icon`, and `close()` closes it. Apps need owl 8 and
+run only while open.
+
+```owl
+app "notes" {
+  meta { owl: 8 }
+  title: "notes"                // the window's title; the drawer shows the name
+  icon: """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 5h18l9 9v29H11z"/>
+    <path d="M29 5v9h9M17 24h15M17 32h10"/>
+  </svg>"""
+  state text = "" persist
+  Column {
+    gap: 8
+    Input { text: text; placeholder: "write…"; focus: true; onSubmit: text = value }
+    Text { text: text }
+  }
+}
+```
+
+An app is listed in the app drawer (under apps, and in search) by its name. Tapping it opens
+it in its own window, with its own card in recent apps, its `title` (or name) and a ✕; `close()` closes it.
+Long-press it in the drawer to add it to home, like any app.
+
+**Icon.** `icon` is the app's icon in the drawer, on home and in recent apps. It's fixed in the
+file rather than an expression, since it's drawn before the app runs, and it's one of two things:
+
+- an SVG in a string, `icon: """<svg ...>...</svg>"""` (under 16 KB). `currentColor` in it becomes
+  the Omarchy theme's accent, so the icon follows theme changes; other colors stay as written.
+- an image, `asset logo = base64"..."` and `icon: logo`: a PNG (or WebP) shown as it is, scaled to
+  fit a square. For a logo or artwork that has its own colors.
+
+Without one, the drawer shows the name's initials. Give every app one. The launcher draws icons
+standalone, on the theme's background, with no plate or frame of its own, so:
+
+- Draw just the symbol, transparent around it: a square `viewBox` (`0 0 48 48`) filled edge to edge
+  by a line drawing in `currentColor`, strokes about 3.5 wide with round caps and joins, like the
+  example above. That's how the store's own apps look, so they sit together in the drawer.
+- A backdrop or frame is yours to add if the icon needs one (a rounded `<rect>` behind the symbol),
+  but most don't.
+- One idea, two or three shapes, readable at 40 dp: a page for notes, arrows for a converter.
+  No text, and no other app's or brand's logo.
+- With monochrome icons on, the launcher draws the icon's bright parts in one color, so the shape
+  has to read by its outline alone.
+
+owl-check doesn't draw the icon; to look at an SVG, render it yourself (for example
+`rsvg-convert -w 192 icon.svg > icon.png`, from `librsvg`).
+
+A widget and an app are separate files and don't share state; a widget that needs a bigger view
+of itself has its own `screen { }`.
 
 ## Components
 

@@ -304,4 +304,10 @@ class Program(
     /** Has a Terminal node. */
     val terminal: Boolean = false,
     val nodeCount: Int,
+    /** A tile or an app; for an app [screen] is the whole view and [root] is empty. */
+    val kind: OwlKind = OwlKind.Widget,
+    /** An app's icon for the drawer and home, when `icon:` holds an SVG. */
+    val icon: String? = null,
+    /** An app's icon, when `icon:` names an `asset` (a PNG or other image) instead. */
+    val iconImage: ByteArray? = null,
 )

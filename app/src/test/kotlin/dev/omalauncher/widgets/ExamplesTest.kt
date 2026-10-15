@@ -2,6 +2,7 @@ package dev.omalauncher.widgets
 
 import dev.omalauncher.widgets.lang.CompileError
 import dev.omalauncher.widgets.lang.Compiler
+import dev.omalauncher.widgets.lang.OwlKind
 import dev.omalauncher.widgets.lang.Source
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -40,7 +41,7 @@ class ExamplesTest {
         val blocks = Regex("```owl\\n(.*?)```", RegexOption.DOT_MATCHES_ALL).findAll(File("src/main/assets/widgets/README.md").readText()).map { it.groupValues[1] }.toList()
         assertTrue(blocks.size >= 4)
         for (b in blocks) {
-            val src = if (b.trimStart().startsWith("widget")) b else "widget {\n  state load = 42\n  state cpu = 1\n  state mem = 2\n$b\n}"
+            val src = if (OwlKind.entries.any { b.trimStart().startsWith(it.word + " ") }) b else "widget {\n  state load = 42\n  state cpu = 1\n  state mem = 2\n$b\n}"
             compile("README sample", src)
         }
     }

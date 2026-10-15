@@ -141,6 +141,13 @@ class MarketTest {
         assertEquals(1, Catalog.parse(index.replace(",\n      \"owl\": ${Compiler.LEVEL + 1}", "")).single().owl)
     }
 
+    @Test fun appsJsonListsItsEntriesUnderApps() {
+        val e = Review("widgets/simon/disk/widget.owl", good).entry(null)
+        val apps = Catalog.write(listOf(e), "2026-10-15T00:00:00Z").replace("\"widgets\": [", "\"apps\": [")
+        assertEquals(e.id, Catalog.parse(apps, "apps").single().id)
+        assertTrue(Catalog.parse(apps).isEmpty())
+    }
+
     @Test fun aNewerCatalogFormatAsksForAnUpdate() {
         val e = assertThrows(WidgetError::class.java) { Catalog.parse("{\"format\": ${Catalog.FORMAT + 1}, \"widgets\": []}") }
         assertTrue(e.message!!.contains("newer launcher"))

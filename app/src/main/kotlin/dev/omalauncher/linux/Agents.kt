@@ -74,16 +74,6 @@ fun agentInvocation(
     }
 }
 
-/** A new-app session in ~/apps: the agent asks what to build, then adds it to the app drawer. */
-fun newAppCommand(agentBin: String): String {
-    val prompt =
-        "Ask me what app to build, then build it in its own directory here. It runs on Arch Linux ARM (aarch64) inside proot " +
-            "on an Android phone, under a Wayland compositor: no systemd, no X11, OpenGL usually in software, a small touch screen. " +
-            "Install what it needs with pacman. When it works, add a desktop entry at ~/.local/share/applications/<name>.desktop " +
-            "(Terminal=true for terminal apps) so it shows up in my app drawer."
-    return "mkdir -p ~/apps && cd ~/apps && ${agentInvocation(agentBin, prompt)}; exec bash"
-}
-
 class AgentStore(
     private val proot: Proot,
     /** Called when the set of installed agents changed, so their desktop entries follow. */

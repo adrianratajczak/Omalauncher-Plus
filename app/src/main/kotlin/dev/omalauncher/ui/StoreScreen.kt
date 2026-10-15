@@ -51,15 +51,17 @@ import androidx.compose.ui.unit.dp
 import dev.omalauncher.linux.Agent
 import dev.omalauncher.widgets.Market
 import dev.omalauncher.widgets.WidgetEngine
+import dev.omalauncher.widgets.lang.OwlKind
 import dev.omalauncher.widgets.market.Catalog
 import dev.omalauncher.widgets.market.CatalogEntry
 import kotlinx.coroutines.launch
 
 /**
- * The widget store: built-in terminal tiles (a plain shell, and one per installed coding agent), then
- * reviewed widgets from the marketplace repo as a grid of previews, with
- * search and category tabs. Tapping a widget opens its page, which shows what
- * it installs and runs; from there it goes on the current page (or updates).
+ * The store, with a toggle between widgets and apps. Widgets: built-in terminal tiles (a plain shell,
+ * and one per installed coding agent), then reviewed widgets from the marketplace repo as a grid of
+ * previews, with search and category tabs. Apps: the reviewed apps, the same way. Tapping one opens
+ * its page, which shows what it installs and runs; from there a widget goes on the current page and
+ * an app in the drawer (or either updates).
  */
 @Composable
 fun StoreScreen(
@@ -70,16 +72,24 @@ fun StoreScreen(
     theme: String?,
     onDismiss: () -> Unit,
 ) {
-    val market = engine.market
+    var kind by remember { mutableStateOf(OwlKind.Widget) }
+    val market = if (kind == OwlKind.App) engine.appMarket else engine.market
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
-    val filter = remember { StoreFilter() }
+    // Each kind keeps its search, tab and scroll while the other shows.
+    val filters = remember { OwlKind.entries.associateWith { StoreFilter() } }
+    val filter = filters.getValue(kind)
     LaunchedEffect(market) { market.refresh() }
     OverlayPanel(
-        "widget store",
+        "store",
         onDismiss,
         actions = {
+            KindToggle(kind) {
+                kind = it
+                open = null
+                message = null
+            }
             RefreshButton(market.loading) { scope.launch { market.refresh() } }
         },
     ) {
@@ -114,7 +124,7 @@ fun StoreScreen(
                 )
             }
             val list = @Composable { modifier: Modifier ->
-                StoreList(engine, agents, page, theme, filter, if (wide) open else null, modifier, select, onDismiss)
+                StoreList(engine, market, agents, page, theme, filter, if (wide) open else null, modifier, select, onDismiss)
             }
             when {
                 // Side by side: the grid, and the picked widget's page beside it.
@@ -127,7 +137,7 @@ fun StoreScreen(
                             showDetail(detail, false, pane)
                         } else {
                             Box(pane, contentAlignment = Alignment.Center) {
-                                BasicText("pick a widget to see what it installs and runs", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
+                                BasicText("pick ${if (kind == OwlKind.App) "an app" else "a widget"} to see what it installs and runs", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
                             }
                         }
                     }
@@ -141,17 +151,39 @@ fun StoreScreen(
     }
 }
 
-/** What the grid shows and where it's scrolled, kept while a widget's page covers it or the layout changes. */
+/** Widgets or apps: two segments in the store's header, the shown one filled. */
+@Composable
+private fun KindToggle(
+    kind: OwlKind,
+    onPick: (OwlKind) -> Unit,
+) {
+    Row(Modifier.padding(end = 4.dp).frame(1.dp, Palette.border, radius = 14.dp).clip(RoundedCornerShape(14.dp))) {
+        for ((k, label) in listOf(OwlKind.Widget to "widgets", OwlKind.App to "apps")) {
+            val on = k == kind
+            BasicText(
+                label,
+                Modifier
+                    .background(if (on) Palette.accent.copy(alpha = 0.15f) else Color.Transparent)
+                    .clickable(enabled = !on) { onPick(k) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                style = Mono.copy(color = if (on) Palette.accent else Palette.muted, fontSize = TextSize.Small),
+            )
+        }
+    }
+}
+
+/** What the grid shows and where it's scrolled, kept while an entry's page covers it or the layout changes. */
 private class StoreFilter {
     var query by mutableStateOf("")
     var tab by mutableStateOf(ALL)
     val grid = LazyGridState()
 }
 
-/** The store's search, category tabs and grid; [selected] is the widget whose page shows beside it. */
+/** The store's search, category tabs and grid for [market]'s kind; [selected] is the entry whose page shows beside it. */
 @Composable
 private fun StoreList(
     engine: WidgetEngine,
+    market: Market,
     agents: List<Agent>,
     page: Int,
     theme: String?,
@@ -161,7 +193,8 @@ private fun StoreList(
     onOpen: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val market = engine.market
+    val apps = market.kind == OwlKind.App
+    val noun = if (apps) "apps" else "widgets"
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     Column(modifier) {
@@ -187,7 +220,7 @@ private fun StoreList(
                 }.filter { e -> q.isEmpty() || listOf(e.name, e.description, e.author, e.category.orEmpty()).any { q in it.lowercase() } }
         val updates = installed.count { market.hasUpdate(it) }
 
-        SearchField(filter.query, { filter.query = it }, onGo = { keyboard?.hide() }, placeholder = "search ${market.entries.size} widgets")
+        SearchField(filter.query, { filter.query = it }, onGo = { keyboard?.hide() }, placeholder = "search ${market.entries.size} $noun")
         Spacer(Modifier.height(8.dp))
         // Scrolls under the panel's padding, up to its frame or, side by side, the divider.
         Row(Modifier.bleed(PanelPadding).horizontalScroll(rememberScrollState()).padding(horizontal = PanelPadding), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -204,21 +237,20 @@ private fun StoreList(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (filter.tab == ALL && q.isEmpty()) {
+            if (!apps && filter.tab == ALL && q.isEmpty()) {
                 item(key = "builtin", span = { GridItemSpan(maxLineSpan) }) { Caption("built in") }
-                item(key = "terminal", span = { GridItemSpan(maxLineSpan) }) {
-                    BuiltInEntry("terminal", "6x4 · a shell in ~", "A shell on the home screen. Add as many as you like; tap one to type.", added = false, page = page) {
+                item(key = "terminal") {
+                    BuiltInEntry("terminal", "6x4 · a shell", added = false, page = page) {
                         scope.launch {
                             engine.addTerminalWidget(page)
                             onDismiss()
                         }
                     }
                 }
-                items(agents, key = { "agent:" + it.bin }, span = { GridItemSpan(maxLineSpan) }) { agent ->
+                items(agents, key = { "agent:" + it.bin }) { agent ->
                     BuiltInEntry(
                         agent.name,
-                        "6x6 · runs ${agent.command} in ~",
-                        "${agent.description}, in a terminal on the home screen. Tap the tile to type.",
+                        "6x6 · runs ${agent.command}",
                         added = engine.hasAgentWidget(agent),
                         page = page,
                     ) {
@@ -231,11 +263,11 @@ private fun StoreList(
             }
             item(key = "catalog", span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Caption("reviewed widgets from github.com/${Market.REPO}")
+                    Caption("reviewed $noun from github.com/${Market.REPO}")
                     when {
                         market.loading && market.entries.isEmpty() -> BasicText("loading…", style = Mono.copy(color = Palette.muted))
                         market.error != null && market.entries.isEmpty() -> BasicText(market.error.orEmpty(), style = Mono.copy(color = Palette.red))
-                        market.entries.isEmpty() -> BasicText("no widgets yet", style = Mono.copy(color = Palette.muted))
+                        market.entries.isEmpty() -> BasicText("no $noun yet", style = Mono.copy(color = Palette.muted))
                         shown.isEmpty() -> BasicText("nothing matches \"${filter.query.trim()}\"", style = Mono.copy(color = Palette.muted))
                     }
                 }
@@ -268,12 +300,11 @@ private fun Chip(
     )
 }
 
-/** A built-in entry: a terminal tile, plain or running an agent's CLI, straight from the launcher rather than the catalog. */
+/** A built-in entry, a grid cell of its own: a terminal tile, plain or running an agent's CLI, straight from the launcher rather than the catalog. */
 @Composable
 private fun BuiltInEntry(
     name: String,
     details: String,
-    description: String,
     added: Boolean,
     page: Int,
     onAdd: () -> Unit,
@@ -283,15 +314,17 @@ private fun BuiltInEntry(
             .fillMaxWidth()
             .frame(1.dp, Palette.border, radius = 12.dp)
             .clickable(enabled = !added, onClick = onAdd)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BasicText(name, Modifier.weight(1f), style = Mono.copy(fontSize = TextSize.Item))
-            BasicText(if (added) "on the home screen" else "tap to add to page $page", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
+        val small = Mono.copy(color = Palette.muted, fontSize = TextSize.Small)
+        BasicText(name, style = Mono.copy(fontSize = TextSize.Body), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        BasicText(details, style = small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (added) {
+            BasicText("✓ on home", style = small.copy(color = Palette.green), maxLines = 1)
+        } else {
+            BasicText("tap to add to page $page", style = small, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        BasicText("built in · $details", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
-        BasicText(description, style = Mono.copy(fontSize = TextSize.Small))
     }
 }
 
@@ -350,7 +383,7 @@ private fun Card(
     }
 }
 
-/** A widget's page: a large preview, what it is, what it installs and runs, and the button that adds it. */
+/** A widget's or app's page: a large preview, what it is, what it installs and runs, and the button that adds it. */
 @Composable
 private fun Detail(
     market: Market,
@@ -378,7 +411,7 @@ private fun Detail(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Image(Icons.Back, null, Modifier.size(16.dp), colorFilter = ColorFilter.tint(Palette.muted))
-                BasicText("all widgets", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
+                BasicText(if (market.kind == OwlKind.App) "all apps" else "all widgets", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
             }
         }
         preview?.let {
@@ -399,13 +432,17 @@ private fun Detail(
             busy != null -> BasicText(busy, style = Mono.copy(color = Palette.accent))
             !e.supported -> BasicText("needs a newer launcher (owl ${e.owl}); update the launcher to install it", style = Mono.copy(color = Palette.red, fontSize = TextSize.Small))
             update -> BracketAction("update ${installed?.version} → ${e.version}", Palette.accent, onInstall)
-            installed != null -> BasicText("✓ on your home screen", style = Mono.copy(color = Palette.green))
-            else -> BracketAction("add to page $page", Palette.accent, onInstall)
+            installed != null -> BasicText(if (market.kind == OwlKind.App) "✓ in your app drawer" else "✓ on your home screen", style = Mono.copy(color = Palette.green))
+            else -> BracketAction(if (market.kind == OwlKind.App) "add to the app drawer" else "add to page $page", Palette.accent, onInstall)
         }
         message?.let { BasicText(it, style = Mono.copy(color = Palette.red, fontSize = TextSize.Small)) }
         if (!linux && e.needsLinux) {
             BasicText(
-                "needs Linux: it runs commands in Arch, so it waits as a placeholder until you install Linux in settings",
+                if (market.kind == OwlKind.App) {
+                    "needs Linux: it runs commands in Arch, so it shows in the app drawer once you install Linux in settings"
+                } else {
+                    "needs Linux: it runs commands in Arch, so it waits as a placeholder until you install Linux in settings"
+                },
                 style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
             )
         }

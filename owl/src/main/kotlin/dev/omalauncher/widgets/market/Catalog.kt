@@ -59,11 +59,15 @@ object Catalog {
 
     private val ID = Regex("""[a-z0-9][a-z0-9-]{0,38}/[a-z0-9][a-z0-9-]{0,38}""")
 
-    fun parse(text: String): List<CatalogEntry> {
-        val root = Json.parse(text) as? Obj ?: throw WidgetError("index.json isn't an object")
-        val format = root.fields["format"]?.num()?.toInt() ?: throw WidgetError("index.json has no format")
-        if (format > FORMAT) throw WidgetError("the store needs a newer launcher; update it to browse widgets again")
-        return (root.fields["widgets"] as? Lst)?.items.orEmpty().mapNotNull { (it as? Obj)?.let(::entry) }
+    /** Reads a catalog: index.json lists its entries under `widgets`, apps.json under `apps`. */
+    fun parse(
+        text: String,
+        list: String = "widgets",
+    ): List<CatalogEntry> {
+        val root = Json.parse(text) as? Obj ?: throw WidgetError("the catalog isn't an object")
+        val format = root.fields["format"]?.num()?.toInt() ?: throw WidgetError("the catalog has no format")
+        if (format > FORMAT) throw WidgetError("the store needs a newer launcher; update it to browse $list again")
+        return (root.fields[list] as? Lst)?.items.orEmpty().mapNotNull { (it as? Obj)?.let(::entry) }
     }
 
     private fun entry(o: Obj): CatalogEntry? {

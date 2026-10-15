@@ -7,20 +7,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.omalauncher.Runtime
-import dev.omalauncher.linux.newAppCommand
-import dev.omalauncher.widgets.newWidgetCommand
+import dev.omalauncher.widgets.lang.OwlKind
+import dev.omalauncher.widgets.newOwlCommand
 import kotlinx.coroutines.launch
 
 @Composable
@@ -69,31 +68,29 @@ fun HomeMenu(
         scope.launch { if (runtime.themes.complete) runtime.themes.applyPicked() else runtime.themes.fetchPicked() }
     }
     Menu(onDismiss = { state.homeMenuOpen = false }) {
-        MenuItem("new widget with $agentName") {
-            state.homeMenuOpen = false
-            when {
-                !linux -> state.show(SettingsPage.Linux)
-                agent == null -> state.show(SettingsPage.Agents)
-                else -> runtime.terminal(newWidgetCommand(agent.bin), "New widget", agent)
+        // What to create sits on the row itself: one tap starts the agent, each kind with its own prompt.
+        Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 10.dp)) {
+            BasicText("create with $agentName", style = Mono.copy(fontSize = TextSize.Item))
+            // Pulled left by the buttons' own padding, so the first bracket lines up with the label.
+            Row(Modifier.offset(x = (-8).dp)) {
+                for ((kind, label) in listOf(OwlKind.Widget to "widget", OwlKind.App to "app")) {
+                    BracketAction(label, Palette.accent) {
+                        state.homeMenuOpen = false
+                        when {
+                            !linux -> state.show(SettingsPage.Linux)
+                            agent == null -> state.show(SettingsPage.Agents)
+                            else -> runtime.terminal(newOwlCommand(agent.bin, kind), "New ${kind.word}", agent)
+                        }
+                    }
+                }
             }
         }
-        MenuItem("new app with $agentName") {
-            state.homeMenuOpen = false
-            when {
-                !linux -> state.show(SettingsPage.Linux)
-                agent == null -> state.show(SettingsPage.Agents)
-                else -> runtime.terminal(newAppCommand(agent.bin), "New app", agent)
-            }
-        }
-        MenuItem("widget store") {
+        MenuItem("browse store") {
             state.homeMenuOpen = false
             state.show(SettingsPage.Store)
         }
-        MenuItem("AUR app store") {
-            state.homeMenuOpen = false
-            if (linux) state.show(SettingsPage.Packages) else state.show(SettingsPage.Linux)
-        }
-        Box(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) { ThemeStrip(
+        Box(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            ThemeStrip(
                 runtime.themes,
                 gutter = 20.dp,
                 onPick = ::pickTheme,
@@ -101,7 +98,8 @@ fun HomeMenu(
                     state.homeMenuOpen = false
                     state.show(SettingsPage.Themes)
                 },
-            ) }
+            )
+        }
     }
 }
 

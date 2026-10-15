@@ -48,6 +48,7 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import dev.omalauncher.BuildConfig
 import dev.omalauncher.widgets.Market
 import dev.omalauncher.widgets.WidgetSpec
+import dev.omalauncher.widgets.lang.OwlKind
 import dev.omalauncher.widgets.market.Catalog
 import dev.omalauncher.widgets.market.Review
 import dev.omalauncher.widgets.market.Paste
@@ -196,7 +197,7 @@ fun ShareWidgetScreen(
 
             if (onPublish != null) {
                 Spacer(Modifier.height(16.dp))
-                BasicText("in the widget store", style = Mono.copy(color = Palette.accent, fontSize = TextSize.Title))
+                BasicText("in the store", style = Mono.copy(color = Palette.accent, fontSize = TextSize.Title))
                 BasicText(
                     "An issue on github.com/${Market.REPO}; once reviewed, anyone can install it.",
                     style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
@@ -257,7 +258,7 @@ private fun StoreIssue(
         scope.launch {
             runCatching { withContext(Dispatchers.IO) { Paste.upload(text, userAgent(), Paste.STORE_DAYS) } }
                 .onSuccess { id ->
-                    val url = Submit.issueUrl(Market.REPO, spec.name, Catalog.metaText(spec.program?.meta?.get("description")).orEmpty(), id)
+                    val url = Submit.issueUrl(Market.REPO, spec.name, Catalog.metaText(spec.program?.meta?.get("description")).orEmpty(), id, spec.kind)
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.onFailure { error = (it as? ShareError)?.message ?: "something went wrong" }
             uploading = false

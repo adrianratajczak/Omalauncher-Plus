@@ -191,6 +191,17 @@
             android:label="Kimi"
             android:targetActivity=".LinuxWindowActivity" />
 
+        <!-- One task per owl app, named after it; launched with its file name in the intent's data. -->
+        <activity
+            android:name=".OwlAppActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:documentLaunchMode="intoExisting"
+            android:exported="false"
+            android:label="App"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.Omalauncher.Window"
+            android:windowSoftInputMode="adjustResize" />
+
         <activity
             android:name=".FilesActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode"

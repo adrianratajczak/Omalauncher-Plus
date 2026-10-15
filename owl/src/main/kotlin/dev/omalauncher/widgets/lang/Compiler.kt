@@ -22,8 +22,11 @@ class Compiler private constructor(
          * instead of failing on what they don't know. Bump it with every
          * addition a widget could depend on: nodes, properties, builtins.
          */
-        const val LEVEL = 7
+        const val LEVEL = 8
         private const val MAX_ASSET_BYTES = 2 shl 20
+
+        /** An app icon is a shape or two drawn in SVG, not a picture. */
+        private const val MAX_ICON_CHARS = 16 * 1024
 
         fun compile(src: String): Program =
             try {
@@ -106,7 +109,9 @@ class Compiler private constructor(
                 // owl 6: properties, named Node.property; values in commands, quoted; the launcher's corner style.
                 listOf("Input.focus", "sh", "corners").associateWith { 6 } +
                 // owl 7: more of the phone, without new permissions.
-                listOf("android.alarm", "android.modes", "torch", "share", "haptic").associateWith { 7 }
+                listOf("android.alarm", "android.modes", "torch", "share", "haptic").associateWith { 7 } +
+                // owl 8: apps, files that aren't tiles.
+                listOf("app \"…\" { }").associateWith { 8 }
 
         // No onLongPress: long-press belongs to the home screen, which lifts the tile to move it.
         /**
@@ -250,6 +255,9 @@ class Compiler private constructor(
     /** Where a handler calls screen() or close(), which need a screen { } block. */
     private var screenAction: Int? = null
 
+    /** Where a handler calls screen(), which an app has no use for. */
+    private var openScreen: Int? = null
+
     /** The newest feature used, from [SINCE], and where: the widget must declare at least its version. */
     private var needs: Triple<Int, String, Int>? = null
 
@@ -306,9 +314,10 @@ class Compiler private constructor(
         val triggers = body.decls.filterIsInstance<Decl.Trigger>().map(::trigger)
 
         val props = body.props.associateBy { it.name }
-        for (p in body.props) if (p.name !in WIDGET_PROPS) fail("unknown widget property '${p.name}' (${WIDGET_PROPS.joinToString()})", p.pos)
         val meta = body.decls.filterIsInstance<Decl.Meta>().flatMap { it.fields }.associate { it.name to constant(it.value, "meta values") }
         val requires = requires(body.decls.filterIsInstance<Decl.Requires>().flatMap { it.fields })
+        if (ast.kind == OwlKind.App) return app(body, meta, level, requires, globals.map { it!! }, triggers)
+        for (p in body.props) if (p.name !in WIDGET_PROPS) fail("unknown widget property '${p.name}' (${WIDGET_PROPS.joinToString()})", p.pos)
         val screens = body.items.filter { it is Item.Node && it.type == "screen" }.map { it as Item.Node }
         if (screens.size > 1) fail("a widget has one screen { }", screens[1].pos)
         inScreen = false
@@ -344,6 +353,73 @@ class Compiler private constructor(
             animated = animated,
             terminal = terminal,
             nodeCount = tileNodes,
+        )
+    }
+
+    /**
+     * An app: the file is a screen of its own, opened from the app drawer, so its nodes are the screen's and
+     * there's no tile, no place on a page, and no screen { } inside it.
+     */
+    private fun app(
+        body: Body,
+        meta: Map<String, Value>,
+        level: Int,
+        requires: Map<String, List<String>>,
+        globals: List<Global>,
+        triggers: List<Trigger>,
+    ): Program {
+        since("app \"…\" { }", 0)
+        for (p in body.props) if (p.name !in setOf("title", "icon")) fail("an app only takes title and icon (no size or page: it isn't a tile)", p.pos)
+        // The drawer draws it before the app runs, so it's fixed in the file, not an expression: an SVG, or an asset's image.
+        val iconProp = body.props.firstOrNull { it.name == "icon" }
+        val iconImage =
+            (iconProp?.value as? Expr.Name)?.let { n ->
+                (globals.firstOrNull { it is Global.Asset && it.name == n.name } as? Global.Asset)?.bytes
+                    ?: fail("icon names an asset: asset logo = base64\"...\" and icon: logo", n.pos)
+            }
+        val icon =
+            iconProp?.takeIf { iconImage == null }?.let { p ->
+                val svg = ((p.value as? Expr.Lit)?.value as? Str)?.v?.trim()
+                    ?: fail("icon is an SVG in a string (icon: \"\"\"<svg ...>...</svg>\"\"\") or an asset's name (icon: logo)", p.pos)
+                if (!svg.startsWith("<svg") || !svg.endsWith("</svg>")) fail("icon should be one <svg>...</svg> element", p.pos)
+                if (svg.length > MAX_ICON_CHARS) fail("icon is over ${MAX_ICON_CHARS / 1024} KB; keep it a simple shape, or use a PNG asset", p.pos)
+                svg
+            }
+        body.handlers.firstOrNull()?.let { fail("handlers go on the nodes inside an app", it.pos) }
+        body.items.firstOrNull { it is Item.Node && it.type == "screen" }?.let { fail("an app is a screen already: put its nodes at the top, without screen { }", it.pos) }
+        nodes = 0
+        maxNodes = MAX_SCREEN_NODES
+        inScreen = true
+        val tree = items(body.items, root, Children.UI)
+        if (tree.isEmpty()) fail("an app needs at least one node, like Text { text: \"hi\" }", 0)
+        openScreen?.let { fail("screen() opens a widget's screen { }; an app is open already, and close() closes it", it) }
+        needs?.let { (v, feature, pos) -> if (level < v) fail("$feature needs owl $v: add meta { owl: $v }", pos) }
+        return Program(
+            name = ast.name ?: "app",
+            meta = meta,
+            level = level,
+            size = null,
+            minSize = 1 to 1,
+            page = 1,
+            order = 0,
+            padding = 12.0,
+            background = null,
+            globals = globals,
+            root = emptyList(),
+            screen = tree,
+            screenTitle = body.props.firstOrNull { it.name == "title" }?.let { ex(it.value, root) },
+            onTap = null,
+            triggers = triggers,
+            commands = commands.toList(),
+            requires = requires,
+            needsLinux = guest || requires.isNotEmpty(),
+            programs = scripts.flatMap(ShellWords::programs).toSortedSet(),
+            animated = animated,
+            terminal = terminal,
+            nodeCount = nodes,
+            kind = ast.kind,
+            icon = icon,
+            iconImage = iconImage,
         )
     }
 
@@ -764,6 +840,7 @@ class Compiler private constructor(
                         }
                         since(call.name, call.pos)
                         if (call.name == "screen" || call.name == "close") screenAction = screenAction ?: call.pos
+                        if (call.name == "screen") openScreen = openScreen ?: call.pos
                         if (call.name in setOf("run", "terminal", "app")) {
                             listCommand(call.args[0], args[0], inner, "${call.name}(…)")
                             // A tap on terminal(...) or app(...) without Linux offers to install it; run(...) would fail unseen.

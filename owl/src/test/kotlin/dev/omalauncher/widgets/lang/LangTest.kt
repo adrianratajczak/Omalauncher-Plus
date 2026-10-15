@@ -529,6 +529,49 @@ class LangTest {
         assertTrue(compileError("widget {\n meta { owl: 6 }\n Text { text: 1; onTap: share(\"x\") } }").contains("share needs owl 7"))
     }
 
+    @Test fun appsAreScreensOfTheirOwn() {
+        val app = Compiler.compile("app \"Notes\" {\n meta { owl: 8 }\n title: \"My notes\"\n state n = 0\n Column { Text { text: n }\n Button { text: \"x\"; onTap: close() } } }")
+        assertEquals(OwlKind.App, app.kind)
+        assertEquals("Notes", app.name)
+        assertTrue(app.root.isEmpty())
+        assertEquals(1, app.screen!!.size)
+        assertEquals("My notes", app.screenTitle!!(Env.root(TestHost(app))).toString())
+        val plain = Compiler.compile("app {\n meta { owl: 8 }\n Input { focus: true } }")
+        assertEquals("app", plain.name)
+        assertEquals(OwlKind.Widget, Compiler.compile("widget {\n Text { text: 1 } }").kind)
+
+        assertTrue(compileError("app {\n Text { text: 1 } }").contains("needs owl 8"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n size: 2x2\n Text { text: 1 } }").contains("only takes title and icon"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n onTap: close()\n Text { text: 1 } }").contains("handlers go on the nodes"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n screen { Text { text: 1 } } }").contains("is a screen already"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n Text { text: 1; onTap: screen() } }").contains("close() closes it"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n }").contains("needs at least one node"))
+        assertTrue(compileError("gadget {\n Text { text: 1 } }").contains("an owl file starts with"))
+        assertEquals(OwlKind.App, OwlKind.of("// notes\n/* a\n b */ app \"x\" { Text { text: \"unterminated } }"))
+        assertEquals(OwlKind.App, OwlKind.of("  app{"))
+        assertEquals(OwlKind.Widget, OwlKind.of("panel {"))
+        assertEquals(OwlKind.Widget, OwlKind.of("application {"))
+    }
+
+    @Test fun appIconsAreSvgInTheFile() {
+        val svg = "<svg viewBox=\"0 0 48 48\"><circle cx=\"24\" cy=\"24\" r=\"20\" fill=\"currentColor\"/></svg>"
+        val app = Compiler.compile("app \"x\" {\n meta { owl: 8 }\n title: \"X\"\n icon: \"\"\"\n  $svg\n \"\"\"\n Text { text: 1 } }")
+        assertEquals(svg, app.icon)
+        // title still comes from title:, wherever icon: is
+        assertEquals("X", app.screenTitle!!(Env.root(TestHost(app))).toString())
+        assertEquals(null, Compiler.compile("app {\n meta { owl: 8 }\n Text { text: 1 } }").icon)
+        assertTrue(compileError("app {\n meta { owl: 8 }\n icon: \"logo.png\"\n Text { text: 1 } }").contains("one <svg>"))
+        // Drawn before the app runs: no expressions.
+        assertTrue(compileError("app {\n meta { owl: 8 }\n state c = \"red\"\n icon: \"<svg fill='${'$'}{c}'></svg>\"\n Text { text: 1 } }").contains("an SVG in a string"))
+        // Or an image embedded as an asset.
+        val png = java.util.Base64.getEncoder().encodeToString(byteArrayOf(-119, 80, 78, 71))
+        val withPng = Compiler.compile("app {\n meta { owl: 8 }\n asset logo = base64\"$png\"\n icon: logo\n Text { text: 1 } }")
+        assertEquals(listOf(-119, 80, 78, 71), withPng.iconImage!!.map { it.toInt() })
+        assertEquals(null, withPng.icon)
+        assertTrue(compileError("app {\n meta { owl: 8 }\n icon: logo\n Text { text: 1 } }").contains("names an asset"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n icon: \"<svg>${"x".repeat(17000)}</svg>\"\n Text { text: 1 } }").contains("over 16 KB"))
+    }
+
     @Test fun androidNotificationsAndVolume() {
         val p = Compiler.compile("widget {\n meta { owl: 4 }\n source n = android.notifications\n source v = android.volume\n Text { text: n.count; onTap: volume(\"up\") } }")
         assertEquals(listOf("android.notifications", "android.volume"), p.globals.map { (it as Global.Source).kind })

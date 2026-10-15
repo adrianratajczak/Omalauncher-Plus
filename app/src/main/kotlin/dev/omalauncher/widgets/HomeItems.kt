@@ -34,8 +34,8 @@ data class WidgetItem(
 }
 
 /**
- * An app pinned from the drawer: an Android activity, a Linux .desktop entry, or a shortcut an Android app made
- * (see [AndroidShortcut]). In [folder], it has no cell of its own.
+ * An app pinned from the drawer: an Android activity, a Linux .desktop entry, an owl app, or a shortcut an Android
+ * app made (see [AndroidShortcut]). In [folder], it has no cell of its own.
  */
 data class Shortcut(
     override val key: String,
@@ -46,6 +46,8 @@ data class Shortcut(
     val profile: Long? = null,
     val linux: LinuxApp? = null,
     val androidShortcut: ShortcutRef? = null,
+    /** An owl app's file name. */
+    val owl: String? = null,
     val folder: String? = null,
 ) : HomeItem {
     override val size get() = 1 to 1
@@ -199,6 +201,7 @@ class Shortcuts(
             profile = if (o.has("profile")) o.getLong("profile") else null,
             linux = linux,
             androidShortcut = o.optJSONObject("shortcut")?.let { ShortcutRef(it.getString("package"), it.getString("id")) },
+            owl = o.optString("owl").ifEmpty { null },
             folder = o.optString("folder").ifEmpty { null },
         )
     }
@@ -217,6 +220,21 @@ class Shortcuts(
         shortcut: AndroidShortcut,
         page: Int,
     ) = add(Shortcut(keyOf(shortcut), page, shortcut.label, profile = shortcut.profile, androidShortcut = shortcut.ref))
+
+    fun addOwl(
+        spec: WidgetSpec,
+        page: Int,
+    ) = add(Shortcut(keyOf(spec), page, spec.name, owl = spec.file.name))
+
+    /** Takes an owl app off the home screen, cell and all, once its file is deleted. */
+    fun removeOwl(spec: WidgetSpec) {
+        val key = keyOf(spec)
+        if (items.none { it.key == key }) return
+        layout.remove(key)
+        remove(key)
+    }
+
+    private fun keyOf(spec: WidgetSpec) = "owl:" + spec.file.name
 
     /** Takes [shortcut] off the home screen, cell and all, once it's removed from the phone. */
     fun removeAndroidShortcut(shortcut: AndroidShortcut) {
@@ -274,6 +292,7 @@ class Shortcuts(
                     .put("page", s.page)
                     .put("label", s.label)
                     .putOpt("folder", s.folder)
+                    .putOpt("owl", s.owl)
             s.component?.let { o.put("component", it.flattenToString()) }
             s.profile?.let { o.put("profile", it) }
             s.androidShortcut?.let { o.put("shortcut", JSONObject().put("package", it.packageName).put("id", it.id)) }
