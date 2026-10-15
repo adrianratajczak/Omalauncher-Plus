@@ -71,6 +71,16 @@ class MarketTest {
         assertTrue(risks("ssh host uptime; curl -s https://x.io").isEmpty())
     }
 
+    @Test fun webFilesFromAnyServerAreFlagged() {
+        fun risks(cmd: String) = Review.risks(listOf(cmd))
+        assertTrue(risks("image GET https://…").single().contains("server put together while the widget runs"))
+        assertTrue(risks("image GET https://x.test…").single().contains("server put together"))
+        assertTrue(risks("sound GET https://…").single().contains("server put together"))
+        assertTrue(risks("sound GET https://x.test/a/…").isEmpty())
+        assertTrue(risks("image GET https://x.test/art/…").isEmpty())
+        assertTrue(risks("image GET https://x.test").isEmpty())
+    }
+
     @Test fun theStoreTakesValuesInCommandsOnlyQuoted() {
         fun review(cmd: String) =
             Review(

@@ -204,6 +204,47 @@ class LangTest {
         assertTrue(compileError("widget {\nsource w = http(\"file:///etc/passwd\")\nText { text: w }\n}").contains("http:// or https://"))
     }
 
+    @Test fun imagesFromTheWeb() {
+        val p =
+            Compiler.compile(
+                """
+                app "a" {
+                  meta { owl: 8 }
+                  state id = 1
+                  let base = "https://x.test/art/"
+                  Image { src: "https://x.test/logo.svg" }
+                  Image { src: "${'$'}{base}${'$'}{id}.svg" }
+                  Canvas { image("https://x.test/p/" + id, 0, 0, 10, 10) }
+                  Image { src: "~/pics/a.png" }
+                }
+                """.trimIndent(),
+            )
+        assertEquals(listOf("image GET https://x.test/logo.svg", "image GET https://x.test/art/…", "image GET https://x.test/p/…"), p.commands)
+        assertTrue(!p.needsLinux)
+        assertTrue(compileError("widget {\nmeta { owl: 7 }\nImage { src: \"https://x.test/a.png\" }\n}").contains("an image from the web needs owl 8"))
+        assertTrue(compileError("app \"a\" {\nmeta { owl: 8 }\nImage { src: \"http://x.test/a.png\" }\n}").contains("https only"))
+    }
+
+    @Test fun sounds() {
+        val p =
+            Compiler.compile(
+                """
+                app "a" {
+                  meta { owl: 8 }
+                  state id = 1
+                  let base = "https://x.test/audio/"
+                  every 5s { sound("${'$'}{base}${'$'}{id}.mp3") }
+                  Button { text: "stop"; onTap: sound("stop") }
+                  Button { text: "chime"; onTap: sound("~/chime.ogg") }
+                }
+                """.trimIndent(),
+            )
+        assertEquals(listOf("sound GET https://x.test/audio/…"), p.commands)
+        assertTrue(!p.needsLinux)
+        assertTrue(compileError("widget {\nmeta { owl: 7 }\nonTap: sound(\"stop\")\nText { text: \"x\" }\n}").contains("sound needs owl 8"))
+        assertTrue(compileError("app \"a\" {\nmeta { owl: 8 }\nButton { text: \"x\"; onTap: sound(\"http://x.test/a.mp3\") }\n}").contains("sounds load over https only"))
+    }
+
     @Test fun forLoopsAndLocalLets() {
         val p =
             Compiler.compile(

@@ -30,6 +30,20 @@ fun decodeSampled(
     return BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
 }
 
+/** [decodeSampled] for an image already in memory, like a download. */
+fun decodeSampled(
+    bytes: ByteArray,
+    minWidth: Int,
+    minHeight: Int = minWidth,
+): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= minWidth && bounds.outHeight / (sample * 2) >= minHeight) sample *= 2
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+}
+
 /** Decodes an app icon at about [size] px square: a PNG via [decodeSampled], an SVG rendered at exactly [size]. */
 fun decodeIcon(
     file: File,

@@ -13,6 +13,11 @@ import android.content.IntentFilter
 import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.hardware.display.DisplayManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.MediaDataSource
+import android.media.MediaPlayer
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Environment
@@ -64,14 +69,24 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 private const val MAX_HTTP_BYTES = 1 shl 20
+
+/** Web images and sounds: largest download, how long a kept one is used without asking again, how long to wait after a failure, and the cache's size. */
+private const val MAX_FILE_BYTES = 8 shl 20
+private const val FILE_FRESH_MS = 24 * 3600_000L
+private const val FILE_RETRY_MS = 60_000L
+private const val FILE_CACHE_BYTES = 64L shl 20
 private const val NOTIFY_CHANNEL = "widgets"
 
 /**
@@ -414,6 +429,118 @@ class WidgetServices(
             }
         }
 
+    /** Web images and sounds on disk, by the SHA-256 of their URL. */
+    private val fileCache by lazy { File(context.cacheDir, "owl-files") }
+
+    /** One download per URL at a time: 48 thumbnails from one file ask for each image once. */
+    private val fileLocks = ConcurrentHashMap<String, Mutex>()
+
+    /** When a URL last failed, in elapsed milliseconds, so a widget offline doesn't ask again on every update. */
+    private val fileFailed = ConcurrentHashMap<String, Long>()
+
+    override suspend fun remoteFile(url: String): File? {
+        if (!url.startsWith("https://")) return null
+        return fileLocks.getOrPut(url) { Mutex() }.withLock {
+            withContext(Dispatchers.IO) {
+                val file = File(fileCache, MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString("") { "%02x".format(it) })
+                val kept = file.takeIf { it.isFile }
+                if (kept != null && System.currentTimeMillis() - kept.lastModified() < FILE_FRESH_MS) return@withContext kept
+                val failed = fileFailed[url]
+                if (failed != null && SystemClock.elapsedRealtime() - failed < FILE_RETRY_MS) return@withContext kept
+                val bytes = runCatching { download(url) }.getOrNull()
+                if (bytes == null) {
+                    fileFailed[url] = SystemClock.elapsedRealtime()
+                    // An old copy beats none: it rarely changed, and the phone may be offline.
+                    return@withContext kept
+                }
+                fileFailed.remove(url)
+                runCatching {
+                    fileCache.mkdirs()
+                    val tmp = File(fileCache, file.name + ".tmp")
+                    tmp.writeBytes(bytes)
+                    tmp.renameTo(file)
+                    pruneFiles()
+                    file
+                }.getOrNull()
+            }
+        }
+    }
+
+    /** A file's bytes, or null for anything but a 2xx or a response over [MAX_FILE_BYTES]. */
+    private fun download(url: String): ByteArray? {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 20_000
+            connection.setRequestProperty("User-Agent", "omalauncher-widgets")
+            if (connection.responseCode !in 200..299) return null
+            return connection.inputStream.use { readAtMost(it, MAX_FILE_BYTES + 1) }.takeIf { it.size <= MAX_FILE_BYTES }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** Deletes the longest-kept files until the cache is under [FILE_CACHE_BYTES]. */
+    private fun pruneFiles() {
+        val files = fileCache.listFiles()?.filter { it.isFile }?.sortedBy { it.lastModified() } ?: return
+        var total = files.sumOf { it.length() }
+        for (f in files) {
+            if (total <= FILE_CACHE_BYTES) break
+            total -= f.length()
+            f.delete()
+        }
+    }
+
+    /** What each widget is playing; main thread only. */
+    private val players = HashMap<Any, MediaPlayer>()
+
+    /** Spoken or played like media: it follows the media volume, and other audio ducks under it. */
+    private val soundAttributes by lazy {
+        AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+    }
+    private val soundFocus by lazy {
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(soundAttributes).build()
+    }
+
+    override fun sound(
+        owner: Any,
+        file: File?,
+        bytes: ByteArray?,
+        failed: (String) -> Unit,
+    ) {
+        scope.launch(Dispatchers.Main) {
+            val audio = context.getSystemService(AudioManager::class.java)
+            fun release(p: MediaPlayer) {
+                if (players[owner] === p) players.remove(owner)
+                p.release()
+                if (players.isEmpty()) audio.abandonAudioFocusRequest(soundFocus)
+            }
+            players[owner]?.let(::release)
+            if (file == null && bytes == null) return@launch
+            val p = MediaPlayer()
+            try {
+                p.setAudioAttributes(soundAttributes)
+                if (file != null) p.setDataSource(file.path) else p.setDataSource(BytesSource(bytes!!))
+                p.setOnPreparedListener {
+                    if (players[owner] !== it) return@setOnPreparedListener
+                    audio.requestAudioFocus(soundFocus)
+                    it.start()
+                }
+                p.setOnCompletionListener(::release)
+                p.setOnErrorListener { mp, what, _ ->
+                    failed("not a sound Android can play (error $what)")
+                    release(mp)
+                    true
+                }
+                players[owner] = p
+                p.prepareAsync()
+            } catch (e: Exception) {
+                failed(e.message ?: e.toString())
+                release(p)
+            }
+        }
+    }
+
     /**
      * By an `android.apps` key, which opens that copy in its own profile, or by package, the launcher's own profile's copy.
      * Counts like an open from the drawer, for the search's ranking and the recent apps.
@@ -480,4 +607,25 @@ private fun readAtMost(
         out.write(buf, 0, n)
     }
     return out.toByteArray()
+}
+
+/** An embedded sound, `asset x = base64"..."`, for MediaPlayer. */
+private class BytesSource(
+    private val bytes: ByteArray,
+) : MediaDataSource() {
+    override fun getSize() = bytes.size.toLong()
+
+    override fun readAt(
+        position: Long,
+        buffer: ByteArray,
+        offset: Int,
+        size: Int,
+    ): Int {
+        if (position >= bytes.size) return -1
+        val n = minOf(size, bytes.size - position.toInt())
+        System.arraycopy(bytes, position.toInt(), buffer, offset, n)
+        return n
+    }
+
+    override fun close() {}
 }

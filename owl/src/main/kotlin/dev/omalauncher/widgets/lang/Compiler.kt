@@ -110,8 +110,10 @@ class Compiler private constructor(
                 listOf("Input.focus", "sh", "corners").associateWith { 6 } +
                 // owl 7: more of the phone, without new permissions.
                 listOf("android.alarm", "android.modes", "torch", "share", "haptic").associateWith { 7 } +
-                // owl 8: apps, files that aren't tiles; the phone's apps as a list.
-                listOf("app \"…\" { }", "android.apps").associateWith { 8 }
+                // owl 8: apps, files that aren't tiles; the phone's apps as a list; images and sounds from the web.
+                listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound").associateWith { 8 }
+
+        private const val WEB_IMAGE = "an image from the web"
 
         // No onLongPress: long-press belongs to the home screen, which lifts the tile to move it.
         /**
@@ -501,6 +503,51 @@ class Compiler private constructor(
         return out?.distinct()?.takeIf { it.size <= MAX_SHAPES }
     }
 
+    /**
+     * An image src or a sound that is, or starts as, an https URL: it needs owl 8, and it's listed like
+     * http(...), as "[what] GET <url>", or the fixed start of it and "…" when the rest comes from widget
+     * values. A URL that is all a value (one from a source's JSON) can't be known here.
+     */
+    private fun webFile(
+        e: Expr,
+        s: Scope,
+        what: String,
+    ) {
+        val whole = constText(e, s)
+        val start = whole ?: constantStart(e, s)
+        if (start.startsWith("http://")) fail("${what}s load over https only", e.pos)
+        if (!start.startsWith("https://")) return
+        if (what == "image") since(WEB_IMAGE, e.pos)
+        commands += "$what GET " + (whole ?: "$start…")
+    }
+
+    /** The text [e] starts with whatever its values turn out to be: "https://x.test/" for "https://x.test/${id}.svg". */
+    private fun constantStart(
+        e: Expr,
+        s: Scope,
+    ): String =
+        when (e) {
+            is Expr.Interp -> {
+                val out = StringBuilder()
+                for (p in e.parts) {
+                    val c = constText(p, s) ?: return out.append(constantStart(p, s)).toString()
+                    out.append(c)
+                }
+                out.toString()
+            }
+            is Expr.Binary -> if (e.op == "+") constText(e.a, s)?.let { it + constantStart(e.b, s) } ?: constantStart(e.a, s) else ""
+            else -> constText(e, s).orEmpty()
+        }
+
+    /** [e]'s text if it's fixed: a literal, or a name for a top-level let that is one (`let base = "https://..."`). */
+    private fun constText(
+        e: Expr,
+        s: Scope,
+    ): String? {
+        val c = ex(e, s).const ?: (e as? Expr.Name)?.let { n -> (lookup(n.name, s) as? Ref.Slot)?.let { (globals[it.index] as? Global.Let)?.value?.const } }
+        return if (c is Str || c is Num) c.toString() else null
+    }
+
     private fun constant(
         e: Expr,
         what: String,
@@ -694,6 +741,7 @@ class Compiler private constructor(
         if (!op.group && it.body != null) fail("${c.name}(...) takes no { } body", c.pos)
         for ((k, v) in c.named) if (k !in DRAW_NAMED) fail("unknown option '$k' (${DRAW_NAMED.joinToString()})", v.pos)
         since(c.name, c.pos)
+        if (c.name == "image") webFile(c.args[0], scope, "image")
         nodes++
         return WNode.Draw(
             c.name,
@@ -749,6 +797,7 @@ class Compiler private constructor(
             }
             guest = true
         }
+        if (n.type == "Image") body.props.firstOrNull { it.name == "src" }?.let { webFile(it.value, scope, "image") }
         // Shaders get `time` whether they use it or not.
         if (n.type == "Shader") animated = true
         if (kind.children == Children.NONE && body.items.isNotEmpty()) fail("${n.type} can't hold other nodes", body.items[0].pos)
@@ -842,6 +891,7 @@ class Compiler private constructor(
                             (args[0].const as? Str)?.v?.let { c -> if (c !in NOTIFICATION) fail("notification takes ${NOTIFICATION.joinToString()} and a notification's key", call.pos) }
                         }
                         since(call.name, call.pos)
+                        if (call.name == "sound") webFile(call.args[0], inner, "sound")
                         if (call.name == "screen" || call.name == "close") screenAction = screenAction ?: call.pos
                         if (call.name == "screen") openScreen = openScreen ?: call.pos
                         if (call.name in setOf("run", "terminal", "app")) {

@@ -53,7 +53,10 @@ import dev.omalauncher.widgets.lang.WNode
 import dev.omalauncher.widgets.lang.WidgetError
 import dev.omalauncher.widgets.lang.num
 import dev.omalauncher.widgets.lang.text
+import dev.omalauncher.widgets.runtime.WidgetImage
 import dev.omalauncher.widgets.runtime.WidgetInstance
+import dev.omalauncher.widgets.runtime.drawPicture
+import androidx.compose.ui.graphics.nativeCanvas
 
 /** Drawing calls per frame; beyond this a Canvas stops and reports. */
 private const val MAX_OPS = 2000
@@ -267,19 +270,30 @@ private class Painter(
                 scale(1 / density, 1 / density, pivot = Offset.Zero) { drawText(layout, topLeft = Offset(x * density, y * density)) }
             }
             "image" -> {
-                val bitmap = inst.image(first.toString()) ?: return
-                drawImage(
-                    bitmap,
-                    dstOffset = IntOffset(v[1].toInt(), v[2].toInt()),
-                    dstSize = IntSize(v[3].toInt(), v[4].toInt()),
-                    // An alpha-only image (an app icon's silhouette, with monochrome icons) is a shape: color it like one.
-                    colorFilter =
-                        if (bitmap.config == ImageBitmapConfig.Alpha8) {
-                            ColorFilter.tint(androidx.compose.ui.graphics.Color(named["color"]?.let { Builtins.argb(it, inst) } ?: Palette.foreground.toArgb()))
-                        } else {
-                            null
-                        },
-                )
+                val color = named["color"]?.let { Builtins.argb(it, inst) }
+                when (val image = inst.image(first.toString()) ?: return) {
+                    is WidgetImage.Raster -> {
+                        val bitmap = image.bitmap
+                        drawImage(
+                            bitmap,
+                            dstOffset = IntOffset(v[1].toInt(), v[2].toInt()),
+                            dstSize = IntSize(v[3].toInt(), v[4].toInt()),
+                            // An alpha-only image (an app icon's silhouette, with monochrome icons) is a shape: color it like one.
+                            colorFilter =
+                                if (bitmap.config == ImageBitmapConfig.Alpha8) {
+                                    ColorFilter.tint(androidx.compose.ui.graphics.Color(color ?: Palette.foreground.toArgb()))
+                                } else {
+                                    null
+                                },
+                        )
+                    }
+                    // Drawn as vectors, so it stays sharp under the canvas's density scale.
+                    is WidgetImage.Vector ->
+                        drawIntoCanvas {
+                            val tint = color?.let { c -> android.graphics.PorterDuffColorFilter(c, android.graphics.PorterDuff.Mode.SRC_IN) }
+                            drawPicture(it.nativeCanvas, image.picture, v[1].toFloat(), v[2].toFloat(), v[3].toFloat(), v[4].toFloat(), tint)
+                        }
+                }
             }
             "sprite" -> {
                 val sprite = inst.sprite(first)

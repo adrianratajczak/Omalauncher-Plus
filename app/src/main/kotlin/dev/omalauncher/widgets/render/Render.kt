@@ -54,6 +54,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import dev.omalauncher.widgets.runtime.PicturePainter
+import dev.omalauncher.widgets.runtime.WidgetImage
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -380,7 +382,7 @@ private fun Element(
         }
         "Image" -> {
             val src = p.observe("src")?.toString().orEmpty()
-            val bitmap =
+            val image =
                 if (src.startsWith("media:")) {
                     // Album art isn't a file to watch: look again whenever a source (the media one) updates,
                     // but recompose only when the art itself changed, not on every tick of every source.
@@ -393,21 +395,24 @@ private fun Element(
                 } else {
                     inst.image(src)
                 }
-            // An alpha-only image (an app icon's silhouette, with monochrome icons) needs a color to show.
-            val tint = p.observe("tint")?.let { p.color(it) } ?: Palette.foreground.takeIf { bitmap?.config == ImageBitmapConfig.Alpha8 }
-            if (bitmap != null) {
-                Image(
-                    bitmap,
-                    null,
-                    mod,
-                    contentScale =
-                        when (p.observe("fit")?.toString()) {
-                            "cover" -> ContentScale.Crop
-                            "fill" -> ContentScale.FillBounds
-                            else -> ContentScale.Fit
-                        },
-                    colorFilter = tint?.let { ColorFilter.tint(it) },
-                )
+            val scale =
+                when (p.observe("fit")?.toString()) {
+                    "cover" -> ContentScale.Crop
+                    "fill" -> ContentScale.FillBounds
+                    else -> ContentScale.Fit
+                }
+            when (image) {
+                is WidgetImage.Raster -> {
+                    val bitmap = image.bitmap
+                    // An alpha-only image (an app icon's silhouette, with monochrome icons) needs a color to show.
+                    val tint = p.observe("tint")?.let { p.color(it) } ?: Palette.foreground.takeIf { bitmap.config == ImageBitmapConfig.Alpha8 }
+                    Image(bitmap, null, mod, contentScale = scale, colorFilter = tint?.let { ColorFilter.tint(it) })
+                }
+                is WidgetImage.Vector -> {
+                    val tint = p.observe("tint")?.let { p.color(it) }
+                    Image(remember(image) { PicturePainter(image.picture) }, null, mod, contentScale = scale, colorFilter = tint?.let { ColorFilter.tint(it) })
+                }
+                null -> {}
             }
         }
         "Canvas" -> CanvasNode(p, mod.then(if (sized) Modifier else Modifier.fillMaxSize()))

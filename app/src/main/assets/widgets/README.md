@@ -84,7 +84,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files and `android.apps` 8; using them without declaring it is an error |
+| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, images from the web and `sound` 8; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -215,7 +215,7 @@ when lists reorder), and `let x = ...` inside any node.
 | `Progress` | `value`, `max` (100), `color`, `track` |
 | `Ring` | circular progress: `value`, `max` (1), `color`, `track`, `thickness` (6), `start`/`sweep` (degrees; `start: 225; sweep: 270` makes a gauge). 64 dp unless sized |
 | `Sparkline` | `values` (a list, usually a `history`), `min` (0), `max`, `color`, `area: true` or a color, `thickness` |
-| `Image` | `src`: an `asset`, a path in this system (`"~/pics/a.png"`) or an Android app's icon (`"app:org.pkg"`, as the drawer shows it, badge included; a silhouette in the foreground color with monochrome icons; `"app:org.pkg@work"` and `"@clone"` ask for the copy in a work profile or the clone, owl 7), `fit: contain/cover/fill`, `tint` |
+| `Image` | `src`: an `asset`, a path in this system (`"~/pics/a.png"`), an `https://` URL (owl 8, see Images from the web) or an Android app's icon (`"app:org.pkg"`, as the drawer shows it, badge included; a silhouette in the foreground color with monochrome icons; `"app:org.pkg@work"` and `"@clone"` ask for the copy in a work profile or the clone, owl 7), `fit: contain/cover/fill`, `tint` |
 | `Canvas` | free drawing, below. Fills the space unless sized |
 | `Shader` | an AGSL shader, below. Fills the space unless sized |
 | `Spacer` | empty space: `size`, `width`, `height` or `weight` |
@@ -258,6 +258,7 @@ the widget that ran it refreshes its sources; other widgets keep their own inter
 | `url("https://...")` | opens in the Android browser. Other links open in the app that takes them: `tel:` the dialer, `geo:` maps, `mailto:` email |
 | `share(text)` | opens Android's share sheet with the text (owl 7) |
 | `haptic()` | a short tap of haptic feedback, if the user has touch feedback on (owl 7) |
+| `sound("https://…/a.mp3")` | plays a sound once, in place of the one playing; `sound("stop")` stops it. Takes a URL, an asset or a file, like `Image`; see Sounds (owl 8) |
 | `torch(true)` | turns the torch on or off; also `torch("toggle")`. Does nothing on a phone without a flash, or while the camera app holds it (owl 7) |
 | `launcher("style")` | opens a launcher screen: `style` (theme, background, home screen, terminal; `themes` too), `agents`, `store`, `drawer` or `linux` (the sheet that installs Linux) |
 | `refresh()` | re-runs this widget's sources now |
@@ -265,6 +266,46 @@ the widget that ran it refreshes its sources; other widgets keep their own inter
 | `media("toggle")` | controls what's playing: `toggle`, `play`, `pause`, `next`, `previous`, or `open` (brings up the player app) |
 | `volume(50)` | sets the media volume in percent; or `volume("up")`, `"down"`, `"mute"`, `"unmute"`, `"toggle"` (owl 4) |
 | `notification("open", key)` | opens a notification from `android.notifications` as tapping it in the shade would; `"dismiss"` clears it. Without notification access, opens the setting that grants it (owl 4) |
+
+## Images from the web
+
+`Image` and Canvas `image(...)` take an `https://` URL as well as an asset or a file (owl 8). The launcher
+downloads it from Android, so it works without Linux, and keeps it: it shows offline after the first
+time, and is asked for again after a day. PNG, JPEG, WebP and SVG work; an SVG, from a URL, an asset or
+a file, is drawn as shapes, so it's sharp at any size and costs almost nothing to keep.
+
+```owl
+app "flags" {
+  meta { owl: 8 }
+  state code = "se"
+  Image { src: "https://flagcdn.com/${code}.svg"; height: 120; fill: width }
+}
+```
+
+Like `http(...)`, the URLs are listed for whoever reviews the file: `image GET https://flagcdn.com/…`.
+Keep the start of the URL fixed, up to its first `/` after the server, so the server is known; a URL
+built entirely from values is flagged. Plain `http://` isn't loaded.
+
+## Sounds
+
+`sound(...)` plays a short clip: a chime when a timer ends, a voice reading the next step (owl 8). It takes
+an `https://` URL (downloaded and kept like an image from the web, and listed for review the same way),
+an `asset` or a file in this system; MP3, OGG, WAV and M4A work. It plays at the media volume, and
+music from other apps quietens while it does.
+
+One sound plays at a time per file: a new one replaces it. It stops when the app's window or the screen
+it played in closes. On the home screen only a tap plays one; a trigger (`every`, `at`, `when`, `on`)
+plays sounds only while the app or the widget's screen is open.
+
+```owl
+app "kitchen timer" {
+  meta { owl: 8 }
+  source now = clock every 1s
+  state endsAt = 0
+  at endsAt { sound("https://actions.google.com/sounds/v1/alarms/beep_short.ogg"); endsAt = 0 }
+  Button { text: endsAt > now ? "${endsAt - now}s" : "3 minutes"; onTap: endsAt = now + 180 }
+}
+```
 
 ## Screens
 
@@ -407,7 +448,7 @@ Canvas {
 | `line(x1, y1, x2, y2)` | |
 | `path(points)` | points are `[x, y]` or `{x, y}`; `closed: true` |
 | `text(s, x, y)` | `size:`, `color:`, `align: start/center/end`, `bold:`; y is the text's middle |
-| `image(src, x, y, w, h)` | |
+| `image(src, x, y, w, h)` | `src` as for `Image`; `color:` paints an SVG in one color |
 | `sprite(rows, x, y, pixel)` | pixel art (owl 3): `rows` is a list of strings, or one `"""` string of lines, with one letter per art pixel and `.` for empty. `palette: {b: accent, e: background}` colors each letter; letters it doesn't name aren't drawn, so one art can be drawn in parts that move separately. Without a palette every letter takes `fill`/`color`. `pixel` is the size of an art pixel in dp; edges land on whole screen pixels, so no seams show |
 | `translate(x, y) { }`, `rotate(deg, cx, cy) { }`, `scale(sx, sy, cx, cy) { }`, `clip(x, y, w, h) { }`, `layer(alpha) { }` | apply to the calls inside |
 
@@ -571,7 +612,8 @@ links.
 ## Limits
 
 A widget has at most 500 nodes, 2000 drawing calls per frame, lists of 1000
-items, and a step budget per update. A widget that draws slowly animates at
+items, 32 images and 128 SVGs on show at once (a view with more keeps loading them
+again and shows none for long), and a step budget per update. A widget that draws slowly animates at
 half rate. Errors never take the home screen down: the failing value shows `…`
 and the message goes to `.errors/`.
 

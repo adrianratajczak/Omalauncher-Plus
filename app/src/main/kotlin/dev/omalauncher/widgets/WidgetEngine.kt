@@ -456,6 +456,7 @@ class WidgetEngine(
                         }
                     },
                     linux = { linux },
+                    foreground = { (shownApps[name] ?: 0) > 0 || openScreen == name },
                 )
             prev?.let(inst::adopt)
             instances[spec.file.name] = inst
