@@ -93,9 +93,9 @@ a broken copy left by an earlier attempt is reinstalled from scratch.
 
 Settings › omalauncher+ holds this fork's own extras, away from upstream's
 rows: the icon pack and icon size screens, a switch hiding the Linux session
-notification (no status bar icon; progress stays in settings › linux), and
-corner presets (theme, edge, soft, round, full) rounding every frame in the
-launcher over what the theme sets.
+notification (gone while idle, still shows installs and errors), a corner
+radius slider (theme, or 0 to 60px over the whole launcher), and a frame glow
+switch (a light accent halo on every border).
 
 ### Lockscreen (`lockscreen/`)
 

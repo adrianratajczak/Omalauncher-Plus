@@ -14,8 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -27,7 +25,10 @@ class LinuxService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var watch: Job? = null
 
-    /** The channel the notification posts to: rebuilt every start, quiet when Plus hides it. */
+    /** Whether the notification is up; Plus takes it down while Linux idles. */
+    private var foreground = false
+
+    /** The channel the notification posts to. */
     private var channel = CHANNEL
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -42,11 +43,13 @@ class LinuxService : Service() {
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Linux session", NotificationManager.IMPORTANCE_LOW))
         channel = CHANNEL
         val state = (application as App).runtime.bootstrap.state
+        // A foreground service must show one at once; the watch takes it down again when Plus hides it.
+        foreground = true
         startForeground(1, notification(state.value), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         if (watch == null) {
             watch =
                 scope.launch {
-                    state.map(::text).distinctUntilChanged().collect { nm.notify(1, build(it)) }
+                    state.collect { show(nm, it) }
                 }
         }
         // Not restarted after the process dies: Linux only comes back with the launcher (Runtime.start),
@@ -60,6 +63,30 @@ class LinuxService : Service() {
     }
 
     private fun notification(state: LinuxState) = build(text(state))
+
+    /**
+     * Shows the state, or takes the notification down: hidden while Linux idles with Plus hiding it.
+     * Installs, errors and removals always show, whatever the setting.
+     */
+    private fun show(
+        nm: NotificationManager,
+        state: LinuxState,
+    ) {
+        val hide = PlusPrefs.hideLinuxNotification && state !is LinuxState.Installing && state !is LinuxState.Failed && state != LinuxState.Removing
+        if (hide) {
+            if (foreground) {
+                foreground = false
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+        } else {
+            if (!foreground) {
+                foreground = true
+                startForeground(1, notification(state), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                nm.notify(1, build(text(state)))
+            }
+        }
+    }
 
     private fun text(state: LinuxState): String =
         when (state) {

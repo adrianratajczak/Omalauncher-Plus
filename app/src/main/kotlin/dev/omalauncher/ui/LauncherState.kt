@@ -100,9 +100,9 @@ class LauncherState {
     ) = composeScope?.launch { drawer.animateTo(target, spring(stiffness = stiffness)) }
         ?: scope.launch { drawer.snapTo(target) }
 
-    fun open() = animate(1f, Spring.StiffnessMediumLow)
+    fun open() = animate(1f, Spring.StiffnessMediumLow * 4)
 
-    fun close() = animate(0f, Spring.StiffnessMedium)
+    fun close() = animate(0f, Spring.StiffnessMedium * 4)
 
     /**
      * Closes without animating. Used when leaving the launcher: animations pause

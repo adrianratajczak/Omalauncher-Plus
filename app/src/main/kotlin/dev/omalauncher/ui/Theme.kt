@@ -10,9 +10,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -125,8 +128,8 @@ object LauncherStyle {
     /** How thick the focused tile's outline is: never so thin it can't be told apart. */
     val focusWidth: Dp get() = maxOf(borderWidth, 2.dp)
 
-    /** What frames multiply their corner radius by; 0 is square. Omalauncher+ can override the theme (settings › omalauncher+ › corners). */
-    val cornerScale get() = PlusPrefs.corners ?: style[Style.CORNER_SCALE].toFloat()
+    /** What frames multiply their corner radius by; 0 is square. Omalauncher+ can set an absolute radius in px (settings › omalauncher+ › corners). */
+    val cornerScale get() = PlusPrefs.cornerPx?.div(16f) ?: style[Style.CORNER_SCALE].toFloat()
 
     /** The shape frames use: square, or [radius] scaled by the corner style. */
     fun shape(radius: Dp = 16.dp): Shape = cornerScale.let { if (it == 0f) RectangleShape else RoundedCornerShape(radius * it) }
@@ -186,8 +189,22 @@ fun Modifier.frame(
     radius: Dp = 16.dp,
 ): Modifier {
     val shape = LauncherStyle.shape(radius)
+    // Omalauncher+'s halo: a translucent accent ring outside the border. Drawn before the clip, so it isn't cut.
+    val glow =
+        if (PlusPrefs.glow && width > 0.dp) {
+            Modifier.drawBehind {
+                drawRoundRect(
+                    color = Palette.accent.copy(alpha = 0.22f),
+                    size = size,
+                    cornerRadius = CornerRadius((radius * LauncherStyle.cornerScale + 4.dp).toPx()),
+                    style = Stroke((width + 8.dp).toPx()),
+                )
+            }
+        } else {
+            Modifier
+        }
     // 0.dp is Compose's hairline, which border() still draws.
-    return clip(shape).background(fill, shape).then(if (width > 0.dp) Modifier.border(width, color, shape) else Modifier)
+    return glow.then(clip(shape).background(fill, shape)).then(if (width > 0.dp) Modifier.border(width, color, shape) else Modifier)
 }
 
 /**
