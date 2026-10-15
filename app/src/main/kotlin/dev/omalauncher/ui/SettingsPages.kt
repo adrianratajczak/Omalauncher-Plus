@@ -78,7 +78,6 @@ private fun SettingsPage(
                 onStyle = { stack.push(SettingsPage.Style) },
                 onAgents = { stack.push(SettingsPage.Agents) },
                 onPackages = { stack.push(SettingsPage.Packages) },
-                onStore = { stack.push(SettingsPage.Store) },
                 onLinux = { stack.push(SettingsPage.Linux) },
                 onLicenses = { stack.push(SettingsPage.Licenses) },
                 onGestures = { stack.push(SettingsPage.Gestures) },
