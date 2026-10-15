@@ -15,7 +15,10 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import dev.omalauncher.ui.Palette
+import dev.omalauncher.theme.Style
+import dev.omalauncher.ui.LauncherStyle
 import dev.omalauncher.ui.applySystemBars
+import dev.omalauncher.ui.showStatusBar
 import dev.omalauncher.ui.LauncherRoot
 import dev.omalauncher.ui.LauncherState
 import dev.omalauncher.ui.PromptRequest
@@ -34,6 +37,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             LauncherRoot(runtime, state)
             LaunchedEffect(Palette.isLight) { applySystemBars(this@MainActivity, Palette.isLight) }
+            val statusBar = LauncherStyle.style[Style.STATUS_BAR_SHOWN]
+            LaunchedEffect(statusBar) { showStatusBar(this@MainActivity, statusBar) }
         }
         handleDebugExec(intent)
         handleSharedWidget(intent)

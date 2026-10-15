@@ -277,3 +277,18 @@ fun applySystemBars(
         }
     activity.enableEdgeToEdge(style, style)
 }
+
+/** Home's status bar, or none: a swipe down from the top edge still brings it back for a moment, and the shade. */
+fun showStatusBar(
+    activity: android.app.Activity,
+    shown: Boolean,
+) {
+    val bars = androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+    val status = androidx.core.view.WindowInsetsCompat.Type.statusBars()
+    if (shown) {
+        bars.show(status)
+    } else {
+        bars.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        bars.hide(status)
+    }
+}
