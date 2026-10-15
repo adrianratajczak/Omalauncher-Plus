@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import dev.omalauncher.linux.LinuxState
+import dev.omalauncher.ui.PlusPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +27,9 @@ class LinuxService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var watch: Job? = null
 
+    /** The channel the notification posts to: rebuilt every start, quiet when Plus hides it. */
+    private var channel = CHANNEL
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(
@@ -34,7 +38,9 @@ class LinuxService : Service() {
         startId: Int,
     ): Int {
         val nm = getSystemService(NotificationManager::class.java)
+        PlusPrefs.load(this)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Linux session", NotificationManager.IMPORTANCE_LOW))
+        channel = CHANNEL
         val state = (application as App).runtime.bootstrap.state
         startForeground(1, notification(state.value), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         if (watch == null) {
@@ -65,9 +71,9 @@ class LinuxService : Service() {
 
     private fun build(text: String): Notification =
         Notification
-            .Builder(this, CHANNEL)
+            .Builder(this, channel)
             .setContentTitle(text)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(if (PlusPrefs.hideLinuxNotification) R.drawable.ic_notification_empty else R.drawable.ic_notification)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()

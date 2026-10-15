@@ -84,6 +84,14 @@ empty `--before` flag that fails the install). Install scripts are re-enabled
 so packages whose binary comes from a postinstall (OpenCode) actually get it;
 a broken copy left by an earlier attempt is reinstalled from scratch.
 
+### Omalauncher+ settings
+
+Settings › omalauncher+ holds this fork's own extras, away from upstream's
+rows: the icon pack and icon size screens, a switch hiding the Linux session
+notification (no status bar icon; progress stays in settings › linux), and
+corner presets (theme, edge, soft, round, full) rounding every frame in the
+launcher over what the theme sets.
+
 ### Lockscreen (`lockscreen/`)
 
 A second app and APK in this repo: `dev.omalauncher.plus.lockscreen`, a clock

@@ -125,8 +125,8 @@ object LauncherStyle {
     /** How thick the focused tile's outline is: never so thin it can't be told apart. */
     val focusWidth: Dp get() = maxOf(borderWidth, 2.dp)
 
-    /** What frames multiply their corner radius by; 0 is square. */
-    val cornerScale get() = style[Style.CORNER_SCALE].toFloat()
+    /** What frames multiply their corner radius by; 0 is square. Omalauncher+ can override the theme (settings › omalauncher+ › corners). */
+    val cornerScale get() = PlusPrefs.corners ?: style[Style.CORNER_SCALE].toFloat()
 
     /** The shape frames use: square, or [radius] scaled by the corner style. */
     fun shape(radius: Dp = 16.dp): Shape = cornerScale.let { if (it == 0f) RectangleShape else RoundedCornerShape(radius * it) }

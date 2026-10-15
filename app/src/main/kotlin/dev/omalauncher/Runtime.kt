@@ -44,6 +44,7 @@ import dev.omalauncher.theme.ThemeStore
 import dev.omalauncher.ui.Gestures
 import dev.omalauncher.ui.IconPackStore
 import dev.omalauncher.ui.IconSize
+import dev.omalauncher.ui.PlusPrefs
 import dev.omalauncher.ui.Search
 import dev.omalauncher.ui.KeyboardBridge
 import dev.omalauncher.ui.SettingsPage
@@ -204,6 +205,7 @@ class Runtime(
                 agents.load()
                 iconPacks.refresh()
                 IconSize.load(context)
+                PlusPrefs.load(context)
                 Search.load(context)
             }
             themes.load()
@@ -284,6 +286,13 @@ class Runtime(
         val intent = Intent(context, LinuxService::class.java)
         // Android 12+ refuses a foreground service started from the background; the work then goes on without it.
         if (on) runCatching { context.startForegroundService(intent) }.onFailure { Log.w(TAG, "cannot start the service", it) } else context.stopService(intent)
+    }
+
+    /** Rebuilds the Linux notification with the Plus setting (minimized when hidden); only while Linux runs. */
+    fun refreshLinuxService() {
+        if (!linux) return
+        setService(false)
+        setService(true)
     }
 
     /** Guest configs follow the theme and the installed agents; only while there is a guest. */
