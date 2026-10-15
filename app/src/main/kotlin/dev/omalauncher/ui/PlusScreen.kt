@@ -68,6 +68,17 @@ fun PlusScreen(
             item(key = "icon-size") {
                 PlusRow("icon size", IconSize.label, onIconSize)
             }
+            item(key = "icon-backdrop") {
+                PlusSwitch(
+                    title = "adaptive background",
+                    subtitle = "off draws logo-only icons without their backdrop",
+                    on = PlusPrefs.adaptiveBackground,
+                    onToggle = {
+                        PlusPrefs.setAdaptiveBackground(context, !PlusPrefs.adaptiveBackground)
+                        runtime.redrawAllIcons()
+                    },
+                )
+            }
             item(key = "icon-shape") {
                 val shape = PlusPrefs.iconShape
                 Column(
@@ -110,7 +121,7 @@ fun PlusScreen(
                 )
             }
             item(key = "icon-tint") {
-                val tint = PlusPrefs.iconTint
+                val source = PlusPrefs.tintSource
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -120,56 +131,42 @@ fun PlusScreen(
                 ) {
                     BasicText("icon tint", style = Mono.copy(fontSize = TextSize.Item))
                     BasicText(
-                        "multiplies every app icon toward the color",
+                        "recolors every app icon · theme takes the accent",
                         style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
                     )
-                    Row(
-                        Modifier
-                            .padding(top = 10.dp)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        BasicText(
-                            "none",
-                            Modifier
-                                .clip(LauncherStyle.shape(16.dp))
-                                .background(if (tint == null) Palette.accent else Color.Transparent)
-                                .clickable {
-                                    PlusPrefs.setIconTint(context, null)
-                                    runtime.redrawAllIcons()
-                                }.padding(horizontal = 14.dp, vertical = 8.dp),
-                            style = Mono.copy(color = if (tint == null) Palette.background else Palette.foreground),
-                        )
-                        for (color in TintColors) {
-                            val active = tint == color.toArgb()
-                            Box(
-                                Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .then(if (active) Modifier.border(2.dp, Palette.accent, CircleShape) else Modifier)
-                                    .clickable {
-                                        PlusPrefs.setIconTint(context, color.toArgb())
-                                        runtime.redrawAllIcons()
-                                    },
-                            )
+                    Box(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState())) {
+                        Row(Modifier.frame(1.dp, Palette.border, radius = 12.dp)) {
+                            TintSource.entries.forEach { option ->
+                                val active = option == source
+                                BasicText(
+                                    option.label,
+                                    Modifier
+                                        .background(if (active) Palette.accent else Color.Transparent)
+                                        .clickable {
+                                            PlusPrefs.setTintSource(context, option)
+                                            runtime.redrawAllIcons()
+                                        }.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    style = Mono.copy(color = if (active) Palette.background else Palette.foreground),
+                                    softWrap = false,
+                                )
+                            }
                         }
                     }
-                    var hex by remember(tint) { mutableStateOf("") }
-                    SearchField(
-                        query = hex,
-                        onChange = { hex = it },
-                        onGo = {
-                            hexColor(hex)?.let {
-                                PlusPrefs.setIconTint(context, it.toArgb())
-                                runtime.redrawAllIcons()
-                                hex = ""
-                            }
-                        },
-                        placeholder = "#rrggbb",
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    )
+                    if (source == TintSource.Custom) {
+                        val (top, bottom) = PlusPrefs.tintTop to PlusPrefs.tintBottom
+                        BasicText(
+                            "top · alone it multiplies, with bottom it shades a gradient",
+                            Modifier.padding(top = 10.dp),
+                            style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
+                        )
+                        TintRow(top, { PlusPrefs.setIconTint(context, it); runtime.redrawAllIcons() })
+                        BasicText(
+                            "bottom · empty keeps the single tint",
+                            Modifier.padding(top = 6.dp),
+                            style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
+                        )
+                        TintRow(bottom, { PlusPrefs.setIconTintBottom(context, it); runtime.redrawAllIcons() })
+                    }
                 }
             }
             item(key = "labels-label") {
@@ -261,6 +258,55 @@ fun PlusScreen(
             }
         }
     }
+}
+
+/** One tint color row: none, the swatches, and a #rrggbb field. */
+@Composable
+private fun TintRow(
+    selected: Int?,
+    onPick: (Int?) -> Unit,
+) {
+    Row(
+        Modifier
+            .padding(top = 10.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicText(
+            "none",
+            Modifier
+                .clip(LauncherStyle.shape(16.dp))
+                .background(if (selected == null) Palette.accent else Color.Transparent)
+                .clickable { onPick(null) }
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            style = Mono.copy(color = if (selected == null) Palette.background else Palette.foreground),
+        )
+        for (color in TintColors) {
+            val active = selected == color.toArgb()
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(color)
+                    .then(if (active) Modifier.border(2.dp, Palette.accent, CircleShape) else Modifier)
+                    .clickable { onPick(color.toArgb()) },
+            )
+        }
+    }
+    var hex by remember(selected) { mutableStateOf("") }
+    SearchField(
+        query = hex,
+        onChange = { hex = it },
+        onGo = {
+            hexColor(hex)?.let {
+                onPick(it.toArgb())
+                hex = ""
+            }
+        },
+        placeholder = "#rrggbb",
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+    )
 }
 
 /** The tint swatches the icons section offers, besides none and any #rrggbb below. */

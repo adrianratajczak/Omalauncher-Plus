@@ -51,6 +51,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -306,6 +310,9 @@ internal fun HomeGrid(
     /** Where the strip and the bar stand beside the grid; null for below it. */
     side: HomeSide? = null,
     per: Int = 1,
+    /** The wallpaper for frosted tiles, and its parallax offset read while drawing. */
+    wallpaper: ImageBitmap? = null,
+    wallpaperOffset: () -> Float = { 0.5f },
 ) {
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -340,6 +347,21 @@ internal fun HomeGrid(
                 Grid(width, height, gap, pad, turned, if (turned) layout.portraitRows(windowSize) else null, used, per)
             }
         if (!turned) SideEffect { layout.setPortraitRows(windowSize, grid.rows) }
+        // The pager viewport's place in the window; steady while pages slide, so frost maps tiles onto the wallpaper.
+        val viewportOrigin = remember { mutableStateOf(Offset.Zero) }
+        // Frosted tiles sample this once; scrolling only redraws the crops.
+        val screenW = window.width
+        val screenH = window.height
+        val tiny = remember(wallpaper) { wallpaper?.let(::frostTiny) }
+        val frost =
+            remember(tiny, screenW, screenH, viewportOrigin.value, wallpaper) {
+                val wall = wallpaper
+                if (wall == null || tiny == null) {
+                    null
+                } else {
+                    FrostData(tiny, tiny.width.toFloat() / wall.width, wall.width, wall.height, screenW, screenH, viewportOrigin.value, wallpaperOffset)
+                }
+            }
         // Previews draw tiles at the size they have here.
         SideEffect {
             layout.geometry = Triple(grid.cellW, grid.cellH, gap)
@@ -624,11 +646,11 @@ internal fun HomeGrid(
                     }
                 },
         ) {
-            HorizontalPager(pager, Modifier.fillMaxSize(), key = { pages.getOrElse(it * grid.per) { -it } }) { slot ->
+            HorizontalPager(pager, Modifier.fillMaxSize().onGloballyPositioned { viewportOrigin.value = it.positionInWindow() }, key = { pages.getOrElse(it * grid.per) { -it } }) { slot ->
                 Row(Modifier.fillMaxSize()) {
                     for (page in pagesAt(slot, pages, grid)) {
                         Box(Modifier.width(with(density) { grid.width.toDp() }).fillMaxHeight()) {
-                            TiledPage(page, itemsOn(page), layout, grid, arrange, selected, render, actions, onNoRoom)
+                            TiledPage(page, itemsOn(page), layout, grid, arrange, selected, render, actions, onNoRoom, slot, pager, frost)
                         }
                     }
                 }
@@ -712,13 +734,35 @@ private fun TiledPage(
     render: @Composable (HomeItem, Modifier, Boolean) -> Unit,
     actions: @Composable (HomeItem) -> Unit,
     onNoRoom: (HomeItem) -> Unit,
+    /** The pager slot this page shows in, to follow it while it slides. */
+    slot: Int,
+    pager: PagerState,
+    /** Frosted tiles, or null without a wallpaper to sample. */
+    frost: FrostData?,
 ) {
     val density = LocalDensity.current
     val carried = arrange.carry?.item?.key
+    // Every tile's rect, for frost and for drawing; the carried tile floats above instead.
+    val rects =
+        items.mapNotNull { item ->
+            if (item.key == carried) null else layout.cell(item.key)?.let { grid.fit(it, item) }?.let { grid.rect(it) }
+        }
     LaunchedEffect(items.map { it.key }, grid.cols, grid.rows) {
         layout.place(items, grid.cols, grid.rows).forEach(onNoRoom)
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize().then(
+            if (PlusPrefs.widgetBlur && frost != null) {
+                Modifier.drawBehind {
+                    // This page's slide from the viewport's start; off-screen pages draw nothing visible.
+                    val off = pager.layoutInfo.visiblePagesInfo.firstOrNull { it.index == slot }?.offset ?: return@drawBehind
+                    drawFrostPage(frost, off.toFloat(), rects)
+                }
+            } else {
+                Modifier
+            }
+        ),
+    ) {
         val pageWidth = constraints.maxWidth
         if (selected != null || (carried != null && arrange.folder == null)) {
             // Grid guides while arranging; not while sorting an open folder, which covers the grid.

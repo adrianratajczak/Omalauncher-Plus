@@ -467,7 +467,10 @@ class Runtime(
             withContext(Dispatchers.IO) {
                 missing.mapNotNull { app ->
                     val file = resolveLinuxIcon(proot.rootfs, app.icon!!) ?: return@mapNotNull null
-                    decodeIcon(file, size)?.let { finishIcon(it, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, PlusPrefs.iconTint) }?.let { Triple(app, it.asImageBitmap(), bitmapMask(it).asImageBitmap()) }
+                    decodeIcon(file, size)?.let {
+                        val (top, bottom) = PlusPrefs.resolvedTints()
+                        finishIcon(it, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, top, bottom)
+                    }?.let { Triple(app, it.asImageBitmap(), bitmapMask(it).asImageBitmap()) }
                 }
             }
         for ((app, icon, mask) in loaded) {

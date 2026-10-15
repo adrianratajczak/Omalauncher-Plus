@@ -273,6 +273,8 @@ fun HomeScreen(
                 scaleX = zoom.value
                 scaleY = zoom.value
             },
+            wallpaper = runtime.themes.wallpaper,
+            wallpaperOffset = { state.wallpaperOffset },
             selected = state.editing,
             onSelect = { state.editing = it },
             actions = { item ->

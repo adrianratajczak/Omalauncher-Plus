@@ -102,6 +102,10 @@ fun HomeMenu(
                     state.show(SettingsPage.Themes)
                 },
             ) }
+        MenuItem("settings") {
+            state.homeMenuOpen = false
+            state.show(SettingsPage.Settings)
+        }
     }
 }
 

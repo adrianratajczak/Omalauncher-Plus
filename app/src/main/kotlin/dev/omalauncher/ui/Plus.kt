@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
 
 /**
  * Omalauncher+'s own settings, kept in one place so they never collide with
@@ -30,8 +31,20 @@ object PlusPrefs {
     var grayscaleIcons by mutableStateOf(false)
         private set
 
-    /** Multiplies every app icon toward this ARGB color; null leaves colors alone. */
-    var iconTint: Int? by mutableStateOf(null)
+    /** Draws adaptive icons without their backdrop, logo only; stock otherwise. */
+    var adaptiveBackground by mutableStateOf(true)
+        private set
+
+    /** Where the icon tint comes from: none, the custom colors, or the theme's accent. */
+    var tintSource by mutableStateOf(TintSource.Off)
+        private set
+
+    /** Multiplies every app icon toward this ARGB color; the custom source's top. */
+    var tintTop: Int? by mutableStateOf(null)
+        private set
+
+    /** The gradient's bottom; with the top set, tints shade top to bottom keeping light. */
+    var tintBottom: Int? by mutableStateOf(null)
         private set
 
     /** Blurs the wallpaper behind the window, so widget tiles frost over. Needs Android 12+. */
@@ -45,7 +58,16 @@ object PlusPrefs {
         hideLabels = prefs.getBoolean(HIDE_LABELS, false)
         iconShape = IconShape.of(prefs.getString(ICON_SHAPE, null))
         grayscaleIcons = prefs.getBoolean(GRAYSCALE, false)
-        iconTint = if (prefs.contains(ICON_TINT)) prefs.getInt(ICON_TINT, 0) else null
+        adaptiveBackground = prefs.getBoolean(ADAPTIVE_BACKGROUND, true)
+        // The old single tint becomes the custom source's top.
+        tintTop = if (prefs.contains(ICON_TINT)) prefs.getInt(ICON_TINT, 0) else null
+        tintBottom = if (prefs.contains(ICON_TINT_BOTTOM)) prefs.getInt(ICON_TINT_BOTTOM, 0) else null
+        tintSource =
+            when {
+                tintTop == null && tintBottom == null -> TintSource.Off
+                prefs.getBoolean(TINT_THEME, false) -> TintSource.Theme
+                else -> TintSource.Custom
+            }
         widgetBlur = prefs.getBoolean(WIDGET_BLUR, false)
         // An earlier Plus saved a scale (0 theme-edge .. 2 full); a scale step is 16px of radius.
         val saved = prefs.getFloat(CORNERS, -1f)
@@ -97,16 +119,56 @@ object PlusPrefs {
         context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(GRAYSCALE, gray).apply()
     }
 
+    /** Draws adaptive backdrops or not and saves it; the caller redraws the icons. */
+    fun setAdaptiveBackground(
+        context: Context,
+        background: Boolean,
+    ) {
+        adaptiveBackground = background
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(ADAPTIVE_BACKGROUND, background).apply()
+    }
+
+    /** Picks where the icon tint comes from and saves it; the caller redraws the icons. */
+    fun setTintSource(
+        context: Context,
+        source: TintSource,
+    ) {
+        tintSource = source
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(TINT_THEME, source == TintSource.Theme).apply()
+    }
+
     /** Tints app icons toward [argb] (null leaves colors alone) and saves it; the caller redraws the icons. */
     fun setIconTint(
         context: Context,
         argb: Int?,
     ) {
-        iconTint = argb
+        tintTop = argb
         context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().apply {
             if (argb == null) remove(ICON_TINT) else putInt(ICON_TINT, argb)
         }.apply()
     }
+
+    /** Tints the gradient's bottom (null leaves a single tint) and saves it; the caller redraws the icons. */
+    fun setIconTintBottom(
+        context: Context,
+        argb: Int?,
+    ) {
+        tintBottom = argb
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().apply {
+            if (argb == null) remove(ICON_TINT_BOTTOM) else putInt(ICON_TINT_BOTTOM, argb)
+        }.apply()
+    }
+
+    /**
+     * The tint to draw with: the custom top (and bottom for a gradient), or the
+     * theme's accent, which follows the theme. Read at render time, off the main thread.
+     */
+    fun resolvedTints(): Pair<Int?, Int?> =
+        when (tintSource) {
+            TintSource.Off -> null to null
+            TintSource.Theme -> Palette.accent.toArgb() to null
+            TintSource.Custom -> tintTop to tintBottom
+        }
 
     /** Blurs the wallpaper behind widgets and saves it. */
     fun setWidgetBlur(
@@ -123,5 +185,8 @@ object PlusPrefs {
     private const val ICON_SHAPE = "plus_icon_shape"
     private const val GRAYSCALE = "plus_grayscale_icons"
     private const val ICON_TINT = "plus_icon_tint"
+    private const val ICON_TINT_BOTTOM = "plus_icon_tint_bottom"
+    private const val TINT_THEME = "plus_tint_theme"
+    private const val ADAPTIVE_BACKGROUND = "plus_adaptive_background"
     private const val WIDGET_BLUR = "plus_widget_blur"
 }

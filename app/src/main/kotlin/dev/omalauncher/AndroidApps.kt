@@ -18,6 +18,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Process
@@ -666,12 +667,16 @@ class AndroidAppCatalog(
         clone: Boolean,
     ): Pair<ImageBitmap, ImageBitmap> {
         val bmp = Bitmap.createBitmap(iconPx, iconPx, Bitmap.Config.ARGB_8888)
-        d.setBounds(0, 0, iconPx, iconPx)
-        d.draw(Canvas(bmp))
+        // Plus can strip the adaptive backdrop: the logo layer fills the bitmap, as the silhouette does.
+        val drawn = if (!PlusPrefs.adaptiveBackground) (d as? AdaptiveIconDrawable)?.foreground ?: d else d
+        val inset = if (drawn !== d) iconPx / 4 else 0
+        drawn.setBounds(-inset, -inset, iconPx + inset, iconPx + inset)
+        drawn.draw(Canvas(bmp))
         var mask = iconMask(d, iconPx)
         if (profile != null) mask = addBadge(bmp, mask, if (clone) cloneMark else briefcase)
         // Plus shapes, grayscales and tints the icon after its badge; the silhouette stays as drawn.
-        val finished = finishIcon(bmp, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, PlusPrefs.iconTint)
+        val (top, bottom) = PlusPrefs.resolvedTints()
+        val finished = finishIcon(bmp, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, top, bottom)
         return finished.asImageBitmap() to mask.asImageBitmap()
     }
 

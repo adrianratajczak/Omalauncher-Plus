@@ -92,10 +92,12 @@ a broken copy left by an earlier attempt is reinstalled from scratch.
 ### Omalauncher+ settings
 
 Settings › omalauncher+ holds this fork's own extras, away from upstream's
-rows: the icon pack and icon size screens, a switch hiding the Linux session
-notification (gone while idle, still shows installs and errors), a corner
-radius slider (theme, or 0 to 60px over the whole launcher), and a frame glow
-switch (a light accent halo on every border).
+rows: the icon pack and icon size screens, icon shape (system, circle,
+squircle), grayscale and tint (a color, a top-to-bottom gradient, or the
+theme's accent), a switch hiding the Linux session notification (gone while
+idle, still shows installs and errors), a corner radius slider (theme, or 0
+to 60px over the whole launcher), and a blurred widget background switch.
+Long-pressing home also offers settings next to the themes.
 
 ### Lockscreen (`lockscreen/`)
 
