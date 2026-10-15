@@ -94,7 +94,6 @@ private fun SettingsPage(
                 onLinux = { stack.push(SettingsPage.Linux) },
                 onLicenses = { stack.push(SettingsPage.Licenses) },
                 onGestures = { stack.push(SettingsPage.Gestures) },
-                onSearch = { stack.push(SettingsPage.Search) },
                 onPlus = { stack.push(SettingsPage.Plus) },
             )
         SettingsPage.Style -> StyleScreen(runtime, onDismiss = close, onBrowse = { stack.push(SettingsPage.Themes) })
@@ -122,6 +121,7 @@ private fun SettingsPage(
                 onDismiss = close,
                 onIconPacks = { stack.push(SettingsPage.IconPacks) },
                 onIconSize = { stack.push(SettingsPage.IconSize) },
+                onSearch = { stack.push(SettingsPage.Search) },
             )
     }
 }

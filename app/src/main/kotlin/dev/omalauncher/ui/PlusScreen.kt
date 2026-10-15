@@ -1,6 +1,7 @@
 package dev.omalauncher.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -17,16 +18,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -37,7 +41,7 @@ import dev.omalauncher.Runtime
 
 /**
  * Omalauncher+'s own settings, in one place so they never collide with
- * upstream's: icon packs and sizes, the Linux notification, and corners.
+ * upstream's: icons, labels, search, the Linux notification, and corners.
  */
 @Composable
 fun PlusScreen(
@@ -45,6 +49,7 @@ fun PlusScreen(
     onDismiss: () -> Unit,
     onIconPacks: () -> Unit,
     onIconSize: () -> Unit,
+    onSearch: () -> Unit,
 ) {
     val context = LocalContext.current
     val packSubtitle =
@@ -62,6 +67,138 @@ fun PlusScreen(
             }
             item(key = "icon-size") {
                 PlusRow("icon size", IconSize.label, onIconSize)
+            }
+            item(key = "icon-shape") {
+                val shape = PlusPrefs.iconShape
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(LauncherStyle.shape(12.dp))
+                        .background(Palette.surface)
+                        .padding(14.dp),
+                ) {
+                    BasicText("icon shape", style = Mono.copy(fontSize = TextSize.Item))
+                    Box(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState())) {
+                        Row(Modifier.frame(1.dp, Palette.border, radius = 12.dp)) {
+                            IconShape.entries.forEach { option ->
+                                val active = option == shape
+                                BasicText(
+                                    option.label,
+                                    Modifier
+                                        .background(if (active) Palette.accent else Color.Transparent)
+                                        .clickable {
+                                            PlusPrefs.setIconShape(context, option)
+                                            runtime.redrawAllIcons()
+                                        }.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    style = Mono.copy(color = if (active) Palette.background else Palette.foreground),
+                                    softWrap = false,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            item(key = "icon-gray") {
+                PlusSwitch(
+                    title = "grayscale icons",
+                    subtitle = "drains every app icon of color",
+                    on = PlusPrefs.grayscaleIcons,
+                    onToggle = {
+                        PlusPrefs.setGrayscaleIcons(context, !PlusPrefs.grayscaleIcons)
+                        runtime.redrawAllIcons()
+                    },
+                )
+            }
+            item(key = "icon-tint") {
+                val tint = PlusPrefs.iconTint
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(LauncherStyle.shape(12.dp))
+                        .background(Palette.surface)
+                        .padding(14.dp),
+                ) {
+                    BasicText("icon tint", style = Mono.copy(fontSize = TextSize.Item))
+                    BasicText(
+                        "multiplies every app icon toward the color",
+                        style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
+                    )
+                    Row(
+                        Modifier
+                            .padding(top = 10.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        BasicText(
+                            "none",
+                            Modifier
+                                .clip(LauncherStyle.shape(16.dp))
+                                .background(if (tint == null) Palette.accent else Color.Transparent)
+                                .clickable {
+                                    PlusPrefs.setIconTint(context, null)
+                                    runtime.redrawAllIcons()
+                                }.padding(horizontal = 14.dp, vertical = 8.dp),
+                            style = Mono.copy(color = if (tint == null) Palette.background else Palette.foreground),
+                        )
+                        for (color in TintColors) {
+                            val active = tint == color.toArgb()
+                            Box(
+                                Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .then(if (active) Modifier.border(2.dp, Palette.accent, CircleShape) else Modifier)
+                                    .clickable {
+                                        PlusPrefs.setIconTint(context, color.toArgb())
+                                        runtime.redrawAllIcons()
+                                    },
+                            )
+                        }
+                    }
+                    var hex by remember(tint) { mutableStateOf("") }
+                    SearchField(
+                        query = hex,
+                        onChange = { hex = it },
+                        onGo = {
+                            hexColor(hex)?.let {
+                                PlusPrefs.setIconTint(context, it.toArgb())
+                                runtime.redrawAllIcons()
+                                hex = ""
+                            }
+                        },
+                        placeholder = "#rrggbb",
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    )
+                }
+            }
+            item(key = "labels-label") {
+                SectionLabel("labels", Modifier.padding(start = 8.dp, top = 6.dp))
+            }
+            item(key = "hide-labels") {
+                PlusSwitch(
+                    title = "hide app labels",
+                    subtitle = "no names under icons, on home and in the drawer",
+                    on = PlusPrefs.hideLabels,
+                    onToggle = { PlusPrefs.setHideLabels(context, !PlusPrefs.hideLabels) },
+                )
+            }
+            item(key = "search-label") {
+                SectionLabel("search", Modifier.padding(start = 8.dp, top = 6.dp))
+            }
+            item(key = "search") {
+                PlusRow("search", Search.label, onSearch)
+            }
+            item(key = "widgets-label") {
+                SectionLabel("widgets", Modifier.padding(start = 8.dp, top = 6.dp))
+            }
+            item(key = "widget-blur") {
+                PlusSwitch(
+                    title = "blurred background",
+                    subtitle = "frosts the wallpaper behind widget tiles · android 12+",
+                    on = PlusPrefs.widgetBlur,
+                    onToggle = { PlusPrefs.setWidgetBlur(context, !PlusPrefs.widgetBlur) },
+                )
             }
             item(key = "notifications-label") {
                 SectionLabel("notifications", Modifier.padding(start = 8.dp, top = 6.dp))
@@ -122,20 +259,24 @@ fun PlusScreen(
                     }
                 }
             }
-            item(key = "glow-label") {
-                SectionLabel("glow", Modifier.padding(start = 8.dp, top = 6.dp))
-            }
-            item(key = "glow") {
-                PlusSwitch(
-                    title = "frame glow",
-                    subtitle = "a light accent halo on every border in the launcher",
-                    on = PlusPrefs.glow,
-                    onToggle = { PlusPrefs.setGlow(context, !PlusPrefs.glow) },
-                )
-            }
         }
     }
 }
+
+/** The tint swatches the icons section offers, besides none and any #rrggbb below. */
+private val TintColors =
+    listOf(
+        Color(0xFFF44336),
+        Color(0xFFFF9800),
+        Color(0xFFFFEB3B),
+        Color(0xFF4CAF50),
+        Color(0xFF009688),
+        Color(0xFF03A9F4),
+        Color(0xFF2196F3),
+        Color(0xFF9C27B0),
+        Color(0xFFE91E63),
+        Color(0xFFFFFFFF),
+    )
 
 /** One on/off row, like the main settings' rows with a switch at the end. */
 @Composable

@@ -37,7 +37,6 @@ fun SettingsScreen(
     onLinux: () -> Unit,
     onLicenses: () -> Unit,
     onGestures: () -> Unit,
-    onSearch: () -> Unit,
     onPlus: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -55,9 +54,8 @@ fun SettingsScreen(
         val rows =
             listOf(
                 Triple("style", runtime.themes.current?.title ?: "theme, background, home screen", onStyle),
-                Triple("omalauncher+", "icons, notification, corners", onPlus),
+                Triple("omalauncher+", "icons, labels, search, notification, corners", onPlus),
                 Triple("gestures", "swipe up: ${runtime.gestures.swipeUp.label} · down: ${runtime.gestures.swipeDown.label}", onGestures),
-                Triple("search", Search.label, onSearch),
                 Triple("linux", linuxStatus, onLinux),
                 if (installed) {
                     Triple("coding agents", runtime.agents.default?.let { "default: ${it.name}" } ?: "install Claude Code, OpenCode, …", onAgents)

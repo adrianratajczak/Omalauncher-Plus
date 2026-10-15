@@ -46,6 +46,7 @@ import dev.omalauncher.ui.IconPackStore
 import dev.omalauncher.ui.IconSize
 import dev.omalauncher.ui.PlusPrefs
 import dev.omalauncher.ui.Search
+import dev.omalauncher.ui.finishIcon
 import dev.omalauncher.ui.KeyboardBridge
 import dev.omalauncher.ui.SettingsPage
 import dev.omalauncher.ui.TerminalTiles
@@ -288,11 +289,32 @@ class Runtime(
         if (on) runCatching { context.startForegroundService(intent) }.onFailure { Log.w(TAG, "cannot start the service", it) } else context.stopService(intent)
     }
 
-    /** Rebuilds the Linux notification with the Plus setting (minimized when hidden); only while Linux runs. */
+    /** Rebuilds the Linux notification with the Plus setting; only while Linux runs. */
     fun refreshLinuxService() {
         if (!linux) return
         setService(false)
         setService(true)
+    }
+
+    /** Draws every Linux icon again (shape, grayscale); the list stays. */
+    fun redrawLinuxIcons() {
+        linuxIcons.clear()
+        linuxMasks.clear()
+        scope.launch { refreshApps() }
+    }
+
+    /** Draws every app icon again with the Plus icon settings. */
+    fun redrawAllIcons() {
+        androidApps.redrawIcons()
+        redrawLinuxIcons()
+    }
+
+    /** Bumped whenever home shows again; the grid breathes in a little zoom. */
+    var homeZoom by mutableStateOf(0)
+        private set
+
+    fun nudgeHome() {
+        homeZoom++
     }
 
     /** Guest configs follow the theme and the installed agents; only while there is a guest. */
@@ -445,7 +467,7 @@ class Runtime(
             withContext(Dispatchers.IO) {
                 missing.mapNotNull { app ->
                     val file = resolveLinuxIcon(proot.rootfs, app.icon!!) ?: return@mapNotNull null
-                    decodeIcon(file, size)?.let { Triple(app, it.asImageBitmap(), bitmapMask(it).asImageBitmap()) }
+                    decodeIcon(file, size)?.let { finishIcon(it, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, PlusPrefs.iconTint) }?.let { Triple(app, it.asImageBitmap(), bitmapMask(it).asImageBitmap()) }
                 }
             }
         for ((app, icon, mask) in loaded) {

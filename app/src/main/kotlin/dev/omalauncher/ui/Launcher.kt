@@ -4,8 +4,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.activity.compose.BackHandler
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.view.WindowManager
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
@@ -89,6 +92,17 @@ private fun DesktopScreen(
     state: LauncherState,
 ) {
     val context = LocalContext.current
+    // Plus blurs the wallpaper behind the window, so widget tiles frost over; needs Android 12+.
+    LaunchedEffect(PlusPrefs.widgetBlur) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@LaunchedEffect
+        val window = (context as? Activity)?.window ?: return@LaunchedEffect
+        if (PlusPrefs.widgetBlur) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            window.attributes = window.attributes.apply { blurBehindRadius = 80 }
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        }
+    }
     BackHandler {
         when {
             state.shared != null -> state.shared = null

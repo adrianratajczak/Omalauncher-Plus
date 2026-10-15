@@ -10,12 +10,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -189,36 +186,8 @@ fun Modifier.frame(
     radius: Dp = 16.dp,
 ): Modifier {
     val shape = LauncherStyle.shape(radius)
-    // Omalauncher+'s halo: a bright core hugging the border, fading outward. Drawn before the clip, so it isn't cut.
-    val glow =
-        if (PlusPrefs.glow && width > 0.dp) {
-            val base = radius * LauncherStyle.cornerScale
-            val accent = Palette.accent
-            Modifier.drawBehind {
-                drawRoundRect(
-                    color = accent.copy(alpha = 0.12f),
-                    size = size,
-                    cornerRadius = CornerRadius((base + 6.dp).toPx()),
-                    style = Stroke((width + 12.dp).toPx()),
-                )
-                drawRoundRect(
-                    color = accent.copy(alpha = 0.35f),
-                    size = size,
-                    cornerRadius = CornerRadius((base + 3.dp).toPx()),
-                    style = Stroke((width + 6.dp).toPx()),
-                )
-                drawRoundRect(
-                    color = accent.copy(alpha = 0.9f),
-                    size = size,
-                    cornerRadius = CornerRadius((base + 1.dp).toPx()),
-                    style = Stroke((width + 2.dp).toPx()),
-                )
-            }
-        } else {
-            Modifier
-        }
     // 0.dp is Compose's hairline, which border() still draws.
-    return glow.then(clip(shape).background(fill, shape)).then(if (width > 0.dp) Modifier.border(width, color, shape) else Modifier)
+    return clip(shape).background(fill, shape).then(if (width > 0.dp) Modifier.border(width, color, shape) else Modifier)
 }
 
 /**

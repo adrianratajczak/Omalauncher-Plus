@@ -935,14 +935,17 @@ private fun AppCell(
             }
         }
         Spacer(Modifier.height(6.dp))
-        BasicText(
-            label,
-            style = Mono.copy(fontSize = TextSize.Small, textAlign = TextAlign.Center),
-            // Always two lines tall, so a row keeps its height whichever apps fill it while typing.
-            maxLines = 2,
-            minLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // Plus can hide the names; the icons keep their room either way.
+        if (!PlusPrefs.hideLabels) {
+            BasicText(
+                label,
+                style = Mono.copy(fontSize = TextSize.Small, textAlign = TextAlign.Center),
+                // Always two lines tall, so a row keeps its height whichever apps fill it while typing.
+                maxLines = 2,
+                minLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         if (menuOpen) {
             AppActions(actions(), shortcuts, onDismiss = { menuOpen = false })
         }

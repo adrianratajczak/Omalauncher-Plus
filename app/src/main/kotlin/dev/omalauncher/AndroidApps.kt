@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.PathParser
 import dev.omalauncher.ui.IconPackStore
 import dev.omalauncher.ui.IconSize
+import dev.omalauncher.ui.PlusPrefs
+import dev.omalauncher.ui.finishIcon
 import dev.omalauncher.ui.iconMask
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -668,7 +670,9 @@ class AndroidAppCatalog(
         d.draw(Canvas(bmp))
         var mask = iconMask(d, iconPx)
         if (profile != null) mask = addBadge(bmp, mask, if (clone) cloneMark else briefcase)
-        return bmp.asImageBitmap() to mask.asImageBitmap()
+        // Plus shapes, grayscales and tints the icon after its badge; the silhouette stays as drawn.
+        val finished = finishIcon(bmp, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, PlusPrefs.iconTint)
+        return finished.asImageBitmap() to mask.asImageBitmap()
     }
 
     /**

@@ -46,6 +46,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -167,6 +170,14 @@ fun HomeScreen(
         if (agent == null) state.show(SettingsPage.Agents) else runtime.terminal(editWidgetCommand(agent.bin, item.spec), "Edit ${item.spec.name}", agent)
     }
 
+    // Coming home again breathes a little zoom into the grid, so it feels alive; not on the first show.
+    val zoom = remember { Animatable(1f) }
+    val epoch = runtime.homeZoom
+    LaunchedEffect(epoch) {
+        if (epoch == 0) return@LaunchedEffect
+        zoom.snapTo(0.96f)
+        zoom.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+    }
     // Overlays below are siblings of the pager inside this Box, so they never change the page's size.
     val density = LocalDensity.current
     val ime = WindowInsets.ime
@@ -258,7 +269,10 @@ fun HomeScreen(
             itemsOn = engine::itemsOn,
             layout = engine.layout,
             arrange = arrange,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth().graphicsLayer {
+                scaleX = zoom.value
+                scaleY = zoom.value
+            },
             selected = state.editing,
             onSelect = { state.editing = it },
             actions = { item ->
