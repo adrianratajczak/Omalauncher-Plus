@@ -144,7 +144,12 @@ class AgentStore(
                 append("mise use -g node@lts && ")
                 // A previous `mise use -g <bin>` (e.g. `opencode`) leaves a broken tool entry behind; drop it first.
                 if (agent.bin != packageSpec) append("mise unuse -g ${shellQuote(agent.bin)} || true; ")
-                append("npm install -g ${shellQuote(packageSpec)} && ")
+                // npm may have scripts disabled (mise sets ignore-scripts); @opencode/cli needs its postinstall.
+                append("npm config delete ignore-scripts || true; ")
+                // A previous try left a copy without its postinstall binary; reinstall from scratch.
+                append("npm uninstall -g ${shellQuote(packageSpec)} || true; ")
+                append("npm install -g ${shellQuote(packageSpec)} --no-ignore-scripts && ")
+                append("npm explore -g ${shellQuote(packageSpec)} -- npm run postinstall || true; ")
                 append("mkdir -p /root/.local/share/mise/shims && ")
                 append("printf '%s\\n' '#!/bin/sh' 'exec \$(npm prefix -g)/bin/${agent.bin} \"\$@\"' > ${shellQuote(shim)} && chmod +x ${shellQuote(shim)}")
             } else {
