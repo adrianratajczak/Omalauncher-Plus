@@ -27,6 +27,9 @@ voicestate=~/.cache/oma-voice/state.json
 dictated=~/.cache/oma-speak/latest.txt
 codex=~/.codex/sessions/demo/rollout-demo.jsonl
 codexcache=~/.cache/codex-quota-community/account.json
+apkver=~/.local/share/apk-maker/VERSION
+apkbin=~/.local/bin/apk-maker
+apkcache=~/.cache/apk-maker
 
 # Moves a real file aside before the demo writes its own; "off" puts it back.
 aside() { [ -f "$1" ] && [ ! -f "$1.before-demo" ] && mv "$1" "$1.before-demo"; mkdir -p "${1%/*}"; }
@@ -39,7 +42,8 @@ if [ "${1:-}" = off ]; then
   rm -rf "$demo" /usr/local/bin/gh /usr/local/bin/curl /usr/local/bin/python3 /usr/local/bin/pgrep \
     /usr/local/bin/python /usr/local/bin/claude /usr/local/bin/ssh /usr/local/bin/agy
   for f in "$ha" "$cursor" "$tesla" "$opencode" "$history" "$photoprism" "$owlmaker" "$owlstatus" "$flipper" \
-    "$agy" "$agenda" "$voice" "$voicestate" "$dictated" "$codex" "$codexcache"; do
+    "$agy" "$agenda" "$voice" "$voicestate" "$dictated" "$codex" "$codexcache" "$apkver" "$apkbin" \
+    "$apkcache/setup.json" "$apkcache/apps.json" "$apkcache/job.json" "$apkcache/log.txt"; do
     [ -f "$f.before-demo" ] && mv "$f.before-demo" "$f" || rm -f "$f"
   done
   exit 0
@@ -313,3 +317,28 @@ aside "$codex"
 now=$(date +%s)
 printf '{"timestamp":"%s","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":38,"window_minutes":300,"resets_at":%s},"secondary":{"used_percent":61,"window_minutes":10080,"resets_at":%s}}}}\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" $((now + 7920)) $((now + 273600)) > "$codex"
+
+# apk-maker: its backend set up (a version above any it would reinstall), every agent installed, nothing
+# missing, and three apps built, the last one just installed. Without this the tile shows its installer.
+aside "$apkver"
+echo 999 > "$apkver"
+aside "$apkbin"
+cat > "$apkbin" <<'EOF'
+#!/bin/sh
+case "${1:-}" in
+  agents) echo "claude codex opencode" ;;
+  adb) echo offline ;;
+esac
+exit 0
+EOF
+chmod +x "$apkbin"
+for f in setup.json apps.json job.json log.txt; do aside "$apkcache/$f"; done
+now=$(date +%s)
+printf '{"state":"done","step":5,"steps":5,"msg":"ready","updated":%s,"pid":0,"version":14}\n' $((now - 86400)) > "$apkcache/setup.json"
+app() { printf '{"slug":"%s","label":"%s","pkg":"dev.apkmaker.%s","agent":"%s","status":"installed","apk":"%s.apk","created":%s,"updated":%s,"history":[{"t":%s,"agent":"%s","prompt":"%s"}]}' "$1" "$2" "$1" "$3" "$1" "$4" "$4" "$4" "$3" "$5"; }
+printf '[%s,%s,%s]\n' \
+  "$(app tipsplit TipSplit claude $((now - 600)) "a tip calculator that splits the bill between friends")" \
+  "$(app habits Habits codex $((now - 90000)) "a habit tracker with a streak per habit")" \
+  "$(app game2048 2048 opencode $((now - 260000)) "the 2048 puzzle game with swipe controls")" > "$apkcache/apps.json"
+printf '{"kind":"app","slug":"tipsplit","agent":"claude","prompt":"a tip calculator that splits the bill between friends","phase":"done","msg":"installed on this phone","started":%s,"updated":%s,"at":"installing","pid":0}\n' $((now - 840)) $((now - 600)) > "$apkcache/job.json"
+printf '%s\n' "== [agent] claude is writing the app" "→ MainActivity.kt" "→ BillScreen.kt" "== [building] gradle assembleDebug" "BUILD SUCCESSFUL in 1m 52s" "== [installing] installing on this phone" "== [done] installed on this phone" > "$apkcache/log.txt"
