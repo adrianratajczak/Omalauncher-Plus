@@ -369,11 +369,17 @@ app "notes" {
   state text = "" persist
   Column {
     gap: 8
+    padding: [12, 0]           // the view runs to the screen's edges; this is the usual margin
     Input { text: text; placeholder: "write…"; focus: true; onSubmit: text = value }
     Text { text: text }
   }
 }
 ```
+
+**Edges.** An app fills the screen below its title, from edge to edge: there's no window border
+and no margin, so the app decides where its content sits. For text, lists and forms, give the top
+node `padding: [12, 0]`, which lines them up with the title. Leave it off (or pad only the parts
+inside) for what should run to the edges, like a photo, a map, a canvas or a bar along the bottom.
 
 **Going back.** An app with views inside it (a list, then one item) says when Back goes up a
 level with `back`, and how with `onBack`. While `back` is true, the window shows a chevron before

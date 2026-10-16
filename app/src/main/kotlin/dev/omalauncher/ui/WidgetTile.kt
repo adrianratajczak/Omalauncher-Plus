@@ -125,11 +125,11 @@ internal fun OwlAppWindow(
 ) {
     val title = instance.program.screenTitle?.let { instance.eval(it, instance.root, "title").text() } ?: spec.name
     val up: (() -> Unit)? = if (instance.canGoUp()) { { instance.goUp() } } else null
-    Box(Modifier.fillMaxSize().background(Palette.background).safeDrawingPadding().padding(PanelGap)) {
-        // No ✕: Back leaves the app and Recents closes it, as with any Android app; close() still does.
-        PanelFrame(onClose = null, title = { BackTitle(title, up) }) {
-            WidgetScreen(instance, Modifier.weight(1f).fillMaxWidth())
-        }
+    // Full screen like any Android app: no window border or side gap, and no ✕ (Back leaves the app and
+    // Recents closes it; close() still does). The view runs to the screen's edges.
+    Column(Modifier.fillMaxSize().background(Palette.background).safeDrawingPadding()) {
+        Box(Modifier.padding(horizontal = PanelPadding, vertical = 8.dp)) { BackTitle(title, up) }
+        WidgetScreen(instance, Modifier.weight(1f).fillMaxWidth())
     }
 }
 
