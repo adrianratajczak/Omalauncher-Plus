@@ -20,7 +20,7 @@ class Parser private constructor(
         private val DECLS = setOf("source", "state", "let", "asset", "component", "meta", "requires")
 
         /** Statements that run on a timer or a change, not a touch: `when cond { ... }`. */
-        val TRIGGERS = setOf("every", "at", "when", "on")
+        val TRIGGERS = TriggerKind.entries.mapTo(HashSet()) { it.word }
     }
 
     private val t get() = tokens[p]

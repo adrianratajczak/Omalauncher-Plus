@@ -93,6 +93,40 @@ class LangTest {
         assertEquals("true", text("1 < 2 && 2 <= 2"))
     }
 
+    /** A list walks its items and a map its {key, value} entries, both capped; anything else walks nothing. */
+    @Test fun iterableWalksListsAndMaps() {
+        assertEquals(listOf(Num(1.0), Num(2.0)), Builtins.iterable(Lst(listOf(Num(1.0), Num(2.0)))))
+        val entries = Builtins.iterable(Obj(mapOf("a" to Num(1.0))))
+        assertEquals("a", (entries.single() as Obj).fields["key"].toString())
+        assertEquals(Num(1.0), (entries.single() as Obj).fields["value"])
+        assertEquals(emptyList<Value>(), Builtins.iterable(Str("abc")))
+        assertEquals(Builtins.MAX_LIST, Builtins.iterable(Lst(List(Builtins.MAX_LIST + 5) { Num(it.toDouble()) })).size)
+        assertEquals(Builtins.MAX_LIST, Builtins.iterable(Obj((0..Builtins.MAX_LIST + 5).associate { "k$it" to Null })).size)
+    }
+
+    /** Every fast-path built-in gives what its general entry gives for numbers, or NaN; NaN in is NaN out. */
+    @Test fun everyNumericFastPathMatchesItsBuiltin() {
+        val inputs = listOf(0.0, -0.0, 1.0, -2.5, 0.5, 3.7, 1e6, -1e-9, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)
+
+        fun check(
+            name: String,
+            xs: List<Double>,
+            fast: Double,
+        ) {
+            val general = runCatching { Builtins.all.getValue(name).impl(Args(xs.map(::Num), null)) }.getOrNull()
+            val where = "$name(${xs.joinToString()})"
+            if (xs.any { it.isNaN() }) assertTrue("$where: NaN in, $fast out", fast.isNaN())
+            if (fast.isNaN()) return
+            assertTrue("$where: fast $fast, general $general", general is Num && general.v == fast)
+        }
+        assertEquals(setOf("floor", "ceil", "abs", "sqrt", "sin", "cos", "tan", "rad", "deg", "sign", "round"), Builtins.numeric1.keys)
+        for ((name, g) in Builtins.numeric1) for (x in inputs) check(name, listOf(x), g.of(x))
+        for ((name, g) in Builtins.numeric2) for (x in inputs) for (y in inputs) check(name, listOf(x, y), g.of(x, y))
+        for ((name, g) in Builtins.numeric3) {
+            for (x in inputs) for (y in inputs) for (z in inputs) check(name, listOf(x, y, z), g.of(x, y, z))
+        }
+    }
+
     /** Arithmetic runs on doubles when every input is a number, and the general way when one isn't: same results. */
     @Test fun numericFastPathMatchesGeneral() {
         val p = Compiler.compile("widget {\n state x = 3\n Text { text: floor(x * 2.5) + 1 } }")
@@ -430,6 +464,23 @@ class LangTest {
         assertTrue(compileError("widget \"t\" {\nlet d = 2 persist\nText { text: d }\n}").contains("persist a state"))
     }
 
+    @Test fun persistedValuesRoundTrip() {
+        val p = Compiler.compile("widget \"t\" {\nsource x = clock every 10s\nstate n = 0 persist\nstate m = 1\nlet h = history(x, 5) persist\nText { text: n }\n}")
+        assertEquals(listOf(1, 3), PersistedValues.slots(p))
+        val hist = Lst((1..5).map { Num(it.toDouble()) })
+        val text = PersistedValues.encode(p, listOf(Num(7.0), hist), 1000)
+        assertTrue(text.startsWith("{\"v\":1,\"savedAt\":1000,"))
+        assertEquals(mapOf(1 to Num(7.0), 3 to hist), PersistedValues.decode(p, text, 1010.0))
+        // A history older than its source takes to fill it (5 samples, 10 s apart) is all gap: state still comes back.
+        assertEquals(mapOf(1 to Num(7.0)), PersistedValues.decode(p, text, 1050.0))
+        // A longer one saved by an older version of the widget keeps its newest samples.
+        val long = PersistedValues.encode(p, listOf(Num(7.0), Lst((1..8).map { Num(it.toDouble()) })), 1000)
+        assertEquals(Lst((4..8).map { Num(it.toDouble()) }), PersistedValues.decode(p, long, 1001.0)[3])
+        // Unknown names, values of the wrong shape and unreadable files restore nothing.
+        assertEquals(emptyMap<Int, Value>(), PersistedValues.decode(p, "{\"v\":1,\"savedAt\":1000,\"values\":{\"old\":1,\"h\":3}}", 1001.0))
+        assertEquals(emptyMap<Int, Value>(), PersistedValues.decode(p, "not json", 1001.0))
+    }
+
     @Test fun jsonWritesWhatItReads() {
         val v = Json.parse("""{"a": [1, 2.5, null, true], "s": "q\"\\\n\u0001", "o": {}}""")
         assertEquals(v, Json.parse(Json.write(v)!!))
@@ -565,7 +616,7 @@ class LangTest {
                 }
                 """.trimIndent(),
             )
-        assertEquals(listOf("every", "at", "when", "on", "when"), p.triggers.map { it.kind })
+        assertEquals(listOf("every", "at", "when", "on", "when"), p.triggers.map { it.kind.word })
         assertEquals(Num(10.0), p.triggers[0].expr.const)
         val host = TestHost(p)
         val root = Env.root(host)
@@ -692,6 +743,9 @@ class LangTest {
         assertTrue(!p.needsLinux)
         assertTrue(compileError("widget {\n meta { owl: 4 }\n Text { text: 1; onTap: volume(\"loud\") } }").contains("volume takes"))
         assertTrue(compileError("widget {\n meta { owl: 4 }\n Text { text: 1; onTap: notification(\"read\", \"k\") } }").contains("notification takes"))
+        assertTrue(compileError("widget {\n Text { text: 1; onTap: media(\"rewind\") } }").contains("media takes"))
+        // The words themselves, and a level in percent for volume, compile.
+        Compiler.compile("widget {\n meta { owl: 7 }\n Text { text: 1; onTap: { media(\"next\"); volume(\"50\"); volume(\"mute\"); torch(\"on\"); notification(\"dismiss\", \"k\") } } }")
         assertTrue(compileError("widget {\n Text { text: 1; onTap: volume(50) } }").contains("volume needs owl 4"))
     }
 
@@ -805,8 +859,8 @@ class LangTest {
         for (bad in listOf("echo ${'$'}{v}", "echo \\\"${'$'}{sh(v)}\\\"", "echo '${'$'}{sh(v)}'", "echo ok # ${'$'}{sh(v)}", "cat <<E\\n${'$'}{sh(v)}\\nE")) {
             assertEquals(bad, listOf("run(…) built from widget values"), commands("onTap: run(\"$bad\")"))
         }
-        assertTrue(Compiler.quotable("a ${Compiler.VALUE} 'b' \"c\" d#e ${Compiler.VALUE}"))
-        assertFalse(Compiler.quotable("a ${'$'}'x ${Compiler.VALUE}'"))
+        assertTrue(ShellWords.quotable("a ${Compiler.VALUE} 'b' \"c\" d#e ${Compiler.VALUE}"))
+        assertFalse(ShellWords.quotable("a ${'$'}'x ${Compiler.VALUE}'"))
         assertEquals(listOf("jq"), Compiler.compile("widget {\n meta { owl: 6 }\n state v = \"x\"\n onTap: run(\"jq -n ${'$'}{sh(v)}\")\n Text { text: v } }").programs.toList())
     }
 

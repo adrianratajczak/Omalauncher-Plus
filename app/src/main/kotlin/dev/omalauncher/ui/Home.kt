@@ -278,7 +278,7 @@ fun HomeScreen(
                     EditBar {
                         if (item is WidgetItem) EditAction("edit") { edit(item) }
                         // As a QR code or link, or (your own) to the store. An agent's tile is a terminal, not a widget to pass on.
-                        if (item is WidgetItem && !item.spec.file.name.startsWith("agent-")) {
+                        if (item is WidgetItem && !engine.isAgentWidget(item.spec)) {
                             EditAction("share") {
                                 state.editing = null
                                 state.sharing = item.spec

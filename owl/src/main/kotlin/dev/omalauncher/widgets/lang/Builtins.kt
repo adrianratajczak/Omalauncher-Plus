@@ -72,7 +72,20 @@ object Builtins {
     /** Handler-only calls; they reach [Host.act]. */
     val actions = mapOf("terminal" to 1..2, "app" to 1..1, "run" to 1..1, "post" to 1..3, "url" to 1..1, "launcher" to 1..1, "refresh" to 0..1, "media" to 1..1, "androidApp" to 1..1, "copy" to 1..1, "notify" to 1..2, "volume" to 1..1, "notification" to 2..2, "screen" to 0..0, "close" to 0..0, "torch" to 1..1, "share" to 1..1, "haptic" to 0..0, "sound" to 1..1)
 
-    private fun lst(items: List<Value>) = Lst(if (items.size > MAX_LIST) items.subList(0, MAX_LIST) else items)
+    private fun lst(items: List<Value>) = Lst(capped(items))
+
+    /** subList, not take(): that would copy every list, every frame. */
+    private fun capped(items: List<Value>) = if (items.size > MAX_LIST) items.subList(0, MAX_LIST) else items
+
+    private fun entriesOf(o: Obj): List<Value> = o.fields.map { (k, v) -> Obj(mapOf("key" to Str(k), "value" to v)) }
+
+    /** What `for` and list properties walk: a list's items, a map's {key, value} entries, at most [MAX_LIST]; nothing for anything else. */
+    fun iterable(v: Value): List<Value> =
+        when (v) {
+            is Lst -> capped(v.items)
+            is Obj -> capped(entriesOf(v))
+            else -> emptyList()
+        }
 
     private fun n(d: Double) = Num(d)
 
@@ -440,7 +453,7 @@ object Builtins {
             "flatten" to Builtin(1, 1) { a -> lst(a.list(0).flatMap { if (it is Lst) it.items else listOf(it) }) },
             "keys" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { o -> lst(o.fields.keys.map(::Str)) } ?: Lst(emptyList()) },
             "values" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { o -> lst(o.fields.values.toList()) } ?: Lst(emptyList()) },
-            "entries" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { o -> lst(o.fields.map { (k, v) -> Obj(mapOf("key" to Str(k), "value" to v)) }) } ?: Lst(emptyList()) },
+            "entries" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { lst(entriesOf(it)) } ?: Lst(emptyList()) },
             "get" to Builtin(2, 3) { a -> member(a[0], a.str(1)).takeIf { it != Null } ?: a[2] },
             // colors
             "rgb" to Builtin(3, 4) { a -> rgb(a.num(0), a.num(1), a.num(2), a.num(3, 1.0)) },

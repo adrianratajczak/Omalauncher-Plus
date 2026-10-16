@@ -518,6 +518,19 @@ internal fun HomeGrid(
                         }
                     } == null
 
+                    /** Takes [downId]'s moves until it lifts, giving [onMove] each position while pressed; where it lifted, or null if it went away. */
+                    suspend fun AwaitPointerEventScope.trackUntilUp(
+                        downId: PointerId,
+                        onMove: (Offset) -> Unit = {},
+                    ): Offset? {
+                        while (true) {
+                            val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == downId } ?: return null
+                            c.consume()
+                            if (!c.pressed) return c.position
+                            onMove(c.position)
+                        }
+                    }
+
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         val start = down.position
@@ -540,14 +553,7 @@ internal fun HomeGrid(
                             if (hit == null) {
                                 down.consume()
                                 if (!fg.panel.has(start)) arrange.folder = null
-                                while (true) {
-                                    val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
-                                    c.consume()
-                                    if (!c.pressed) {
-                                        arrange.naming = fg.header.has(start) && fg.header.has(c.position)
-                                        break
-                                    }
-                                }
+                                trackUntilUp(down.id)?.let { up -> arrange.naming = fg.header.has(start) && fg.header.has(up) }
                                 return@awaitEachGesture
                             }
                             if (!awaitLongPress(down.id, start)) return@awaitEachGesture
@@ -578,12 +584,9 @@ internal fun HomeGrid(
                                 when {
                                     edges.any -> {
                                         val others = placed.filter { it.first.key != item.key }.map { it.second }
-                                        while (true) {
-                                            val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
-                                            c.consume()
-                                            if (!c.pressed) break
+                                        trackUntilUp(down.id) { position ->
                                             val (minW, minH) = item.minSize
-                                            val p = g.local(c.position, selSide)
+                                            val p = g.local(position, selSide)
                                             val x0 = if (edges.left) g.colLine(p).coerceAtMost(cell.right - minW) else cell.x
                                             val x1 = if (edges.right) g.colLine(p).coerceAtLeast(cell.x + minW) else cell.right
                                             val y0 = if (edges.top) g.rowLine(p).coerceAtMost(cell.bottom - minH) else cell.y
@@ -598,11 +601,7 @@ internal fun HomeGrid(
                                     else -> {
                                         // Tap outside finishes editing; a drag outside does nothing.
                                         onSelect(null)
-                                        while (true) {
-                                            val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
-                                            c.consume()
-                                            if (!c.pressed) break
-                                        }
+                                        trackUntilUp(down.id)
                                     }
                                 }
                             } finally {

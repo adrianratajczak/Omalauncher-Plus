@@ -208,7 +208,7 @@ internal class BarSearch(
 }
 
 private fun allApps(runtime: Runtime): List<AppHit> =
-    runtime.widgets.apps().map { AppHit.Owl(it) } + runtime.linuxApps.map { AppHit.Linux(it) } + runtime.androidApps.apps.map { AppHit.Android(it) } +
+    runtime.widgets.apps().map { AppHit.Owl(it) } + runtime.linuxApps.apps.map { AppHit.Linux(it) } + runtime.androidApps.apps.map { AppHit.Android(it) } +
         runtime.androidApps.shortcuts.map { AppHit.Shortcut(it) }
 
 internal fun searchApps(
@@ -268,7 +268,7 @@ private fun AppHit.actions(handlers: AppHandlers): List<Pair<String, () -> Unit>
 /** The app's icon and its silhouette, each null until loaded or if it has none. */
 private fun AppHit.icons(runtime: Runtime): Pair<ImageBitmap?, ImageBitmap?> =
     when (this) {
-        is AppHit.Linux -> runtime.linuxIcons[app.id] to runtime.linuxMasks[app.id]
+        is AppHit.Linux -> runtime.linuxApps.icons[app.id] to runtime.linuxApps.masks[app.id]
         is AppHit.Owl -> runtime.owlIcon(spec, mono = false) to runtime.owlIcon(spec, mono = true)
         is AppHit.Android -> runtime.androidApps.icons[app.key] to runtime.androidApps.masks[app.key]
         is AppHit.Shortcut -> runtime.androidApps.icons[shortcut.key] to runtime.androidApps.masks[shortcut.key]
@@ -552,7 +552,7 @@ internal fun AppPanel(
                                 DrawerTab.Personal -> {
                                     section("apps", runtime.widgets.apps().map { AppHit.Owl(it) })
                                     if (linuxState == LinuxState.Installed) {
-                                        section("linux", runtime.linuxApps.map { AppHit.Linux(it) })
+                                        section("linux", runtime.linuxApps.apps.map { AppHit.Linux(it) })
                                     } else {
                                         // Linux apps would be listed here; without Linux, one quiet offer instead.
                                         item(key = "linux-offer") {

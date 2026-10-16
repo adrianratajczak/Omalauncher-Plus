@@ -18,7 +18,6 @@ import dev.omalauncher.linux.Agent
 import dev.omalauncher.linux.Proot
 import dev.omalauncher.linux.pacmanInstall
 import dev.omalauncher.linux.runJob
-import dev.omalauncher.linux.shellQuote
 import dev.omalauncher.ui.Palette
 import dev.omalauncher.theme.StyleStore
 import dev.omalauncher.upgrade.Managed
@@ -240,7 +239,10 @@ class WidgetEngine(
         }
     }
 
-    private fun agentWidgetFile(agent: Agent) = "agent-${agent.bin}.owl"
+    private fun agentWidgetFile(agent: Agent) = "$AGENT_PREFIX${agent.bin}.owl"
+
+    /** An agent's terminal tile, which [addAgentWidget] made. */
+    fun isAgentWidget(spec: WidgetSpec) = spec.file.name.startsWith(AGENT_PREFIX)
 
     /** File names of the widgets this app ships, defaults and examples alike. */
     private val bundledFiles by lazy {
@@ -250,7 +252,7 @@ class WidgetEngine(
     /** The user (or their agent) wrote it: not shipped with the app, installed from the store, shared with them, or an agent's tile. */
     fun isOwnWidget(spec: WidgetSpec): Boolean {
         val name = spec.file.name
-        return name !in bundledFiles && !name.startsWith("agent-") && !name.startsWith(TERMINAL_PREFIX) && !name.startsWith("shared-") &&
+        return name !in bundledFiles && !isAgentWidget(spec) && !name.startsWith(TERMINAL_PREFIX) && !name.startsWith(Shared.FILE_PREFIX) &&
             listOf(market, appMarket).none { m -> m.installed.values.any { it.file == name } }
     }
 
@@ -542,10 +544,10 @@ class WidgetEngine(
         if (skip != null) return writeCheck(spec.file, hash, "ok", "preview-skipped $hash $skip")
         val inst = instance(spec)!!
         if (program.kind != OwlKind.Widget) return previewView(spec, inst, hash)
-        val cells = layout.cell(name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, GRID_COLUMNS) to h.coerceAtLeast(1) } ?: (3 to 3)
+        val cells = tileCells(spec)
         val (w, h) = layout.tilePx(cells, context.resources.displayMetrics)
         previewing += name
-        val loaded: suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
+        val loaded = loadedOf(inst)
         var screen: String? = null
         val ok =
             try {
@@ -567,6 +569,12 @@ class WidgetEngine(
         writeCheck(spec.file, hash, "ok", listOfNotNull(line, screen).joinToString("\n"))
     }
 
+    /** The tile's cells as it's laid out on home, else as the file sizes it. */
+    private fun tileCells(spec: WidgetSpec) = layout.cell(spec.file.name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, GRID_COLUMNS) to h.coerceAtLeast(1) } ?: (3 to 3)
+
+    /** Waits until every source of [inst] has a value; what a preview draws after. */
+    private fun loadedOf(inst: WidgetInstance): suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
+
     /** An app has no tile: its view is drawn at the phone's size, as it opens, and noted as its screen. */
     private suspend fun previewView(
         spec: WidgetSpec,
@@ -578,7 +586,7 @@ class WidgetEngine(
         previewing += name
         val ok =
             try {
-                previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, File(previewDir, "$name.screen.png"), { snapshotFlow { inst.loaded() }.first { it } })
+                previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, File(previewDir, "$name.screen.png"), loadedOf(inst))
             } finally {
                 previewing.remove(name)
             }
@@ -603,14 +611,14 @@ class WidgetEngine(
     ) {
         val spec = specs.firstOrNull { it.file.name == name } ?: return
         val inst = instance(spec) ?: return
-        val cells = layout.cell(name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, GRID_COLUMNS) to h.coerceAtLeast(1) } ?: (3 to 3)
+        val cells = tileCells(spec)
         val (w, h) = layout.tilePx(cells, context.resources.displayMetrics)
         val themes = withContext(Dispatchers.IO) { runtime.themes.bundled }
         val before = Palette.current
         val dir = File(previewDir, "themes")
         previewing += name
         try {
-            val loaded: suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
+            val loaded = loadedOf(inst)
             withTimeoutOrNull(30_000) { loaded() }
             val dm = context.resources.displayMetrics
             for ((n, screen) in screens.ifEmpty { listOf("") }.withIndex()) {
@@ -766,15 +774,10 @@ class WidgetEngine(
             missing.clear()
             return
         }
-        // pacman -T prints the packages that aren't installed. Names come from widget files: quote them.
-        val script =
-            (if (packages.isEmpty()) "" else "pacman -T ${packages.joinToString(" ") { shellQuote(it) }} | sed 's/^/pkg /'; ") +
-                (if (bins.isEmpty()) "" else "for c in ${bins.joinToString(" ") { shellQuote(it) }}; do command -v \"\$c\" >/dev/null || echo \"bin \$c\"; done; ") +
-                "true"
-        val out = runCatching { services.shells.run(script, 20).out }.getOrElse { return }
-        val lines = out.lines().map { it.trim() }
-        val missingPkgs = lines.filter { it.startsWith("pkg ") }.map { it.removePrefix("pkg ") }.toSet()
-        val missingBins = lines.filter { it.startsWith("bin ") }.map { it.removePrefix("bin ") }.toSet()
+        val out = runCatching { services.shells.run(DependencyCheck.script(packages, bins), 20).out }.getOrElse { return }
+        val found = DependencyCheck.parse(out)
+        val missingPkgs = found.packages
+        val missingBins = found.programs
         for (spec in specs) {
             val p = spec.program ?: continue
             val need = p.requires["pacman"].orEmpty().filter { it in missingPkgs }
@@ -844,6 +847,7 @@ class WidgetEngine(
         /** The default terminal tile, which [addTerminalWidget] copies. */
         private const val TERMINAL_ASSET = "45-terminal.owl"
         private const val TERMINAL_PREFIX = "terminal-"
+        private const val AGENT_PREFIX = "agent-"
 
         /** The widgets dir, relative to the guest home. */
         const val GUEST_DIR = ".config/omalauncher/widgets"
