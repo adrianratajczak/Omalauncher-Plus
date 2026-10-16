@@ -36,7 +36,7 @@ retitle that section with the version when releasing.
 - `store/screenshots/`: `frame.html` adds the captions and frames to the raw
   captures in `raw/`; `scripts/render-screenshots.sh` renders the Play
   screenshots from it (needs Google Chrome).
-- `store/privacy-policy.txt`: the source of the privacy policy that the
+- `store/omalauncher.txt`: the source of the privacy policy that the
   listing links to. Upload the new version before releasing a build that
   changes what the app accesses.
 - `store/foreground-service-demo.mp4`: the recording for Play's
