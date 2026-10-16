@@ -817,6 +817,16 @@ class WidgetInstance(
         return null
     }
 
+    /** Whether an app's Back goes up a level inside it now, because its `back` holds. */
+    fun canGoUp() = program.back?.let { eval(it, root, "back").truthy } == true
+
+    /** Runs an app's onBack while its `back` holds; false when Back should leave the app instead. */
+    fun goUp(): Boolean {
+        if (!canGoUp()) return false
+        program.onBack?.run(root, emptyList())
+        return true
+    }
+
     /** `owl-send <file> refresh`. */
     fun refreshNow() = refresh()
 

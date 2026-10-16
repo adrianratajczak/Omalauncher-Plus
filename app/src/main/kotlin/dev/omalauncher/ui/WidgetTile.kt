@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -114,6 +115,22 @@ private fun TileButton(
             .padding(horizontal = 10.dp, vertical = 6.dp),
         style = Mono.copy(color = color),
     )
+}
+
+/** An owl app's window: its title, with a back chevron while its `back` holds, over its view. */
+@Composable
+internal fun OwlAppWindow(
+    spec: WidgetSpec,
+    instance: WidgetInstance,
+) {
+    val title = instance.program.screenTitle?.let { instance.eval(it, instance.root, "title").text() } ?: spec.name
+    val up: (() -> Unit)? = if (instance.canGoUp()) { { instance.goUp() } } else null
+    Box(Modifier.fillMaxSize().background(Palette.background).safeDrawingPadding().padding(PanelGap)) {
+        // No ✕: Back leaves the app and Recents closes it, as with any Android app; close() still does.
+        PanelFrame(onClose = null, title = { BackTitle(title, up) }) {
+            WidgetScreen(instance, Modifier.weight(1f).fillMaxWidth())
+        }
+    }
 }
 
 /** A widget's screen { }, full screen over home in an Omarchy window titled by its `title` or the widget's name. */

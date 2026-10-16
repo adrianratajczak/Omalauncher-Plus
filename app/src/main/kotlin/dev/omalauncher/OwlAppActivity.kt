@@ -8,25 +8,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
-import dev.omalauncher.ui.BackTitle
-import dev.omalauncher.ui.PanelFrame
-import dev.omalauncher.ui.PanelGap
+import dev.omalauncher.ui.OwlAppWindow
 import dev.omalauncher.ui.Palette
 import dev.omalauncher.ui.applySystemBars
-import dev.omalauncher.widgets.lang.text
 import dev.omalauncher.widgets.render.LocalInputFocus
-import dev.omalauncher.widgets.render.WidgetScreen
 
 /**
  * An owl app (`app "name" { }`) as its own task and Recents card, named after it and with its icon,
@@ -57,19 +46,9 @@ class OwlAppActivity : InstantActivity() {
                 }
             val icon = runtime.owlIcon(spec, mono = false)
             LaunchedEffect(spec.name, icon, Palette.accent) { describeTask(spec.name, icon?.asAndroidBitmap()) }
-            val title = inst.program.screenTitle?.let { inst.eval(it, inst.root, "title").text() } ?: spec.name
-            // While the app's `back` holds, Back and the chevron go up a level inside it; otherwise Back leaves it.
-            val up = inst.program.back?.let { inst.eval(it, inst.root, "back").truthy } == true
-            val goUp: () -> Unit = { inst.program.onBack?.run(inst.root, emptyList()) }
-            BackHandler { if (up) goUp() else backInstantly() }
-            Box(Modifier.fillMaxSize().background(Palette.background).safeDrawingPadding().padding(PanelGap)) {
-                // No ✕: Back leaves the app and Recents closes it, as with any Android app; close() still does.
-                PanelFrame(onClose = null, title = { BackTitle(title, if (up) goUp else null) }) {
-                    CompositionLocalProvider(LocalInputFocus provides true) {
-                        WidgetScreen(inst, Modifier.weight(1f).fillMaxWidth())
-                    }
-                }
-            }
+            // While the app's `back` holds, Back goes up a level inside it; otherwise Back leaves it.
+            BackHandler { if (!inst.goUp()) backInstantly() }
+            CompositionLocalProvider(LocalInputFocus provides true) { OwlAppWindow(spec, inst) }
         }
     }
 
