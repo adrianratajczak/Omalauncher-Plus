@@ -400,7 +400,10 @@ private fun Card(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Box(Modifier.fillMaxWidth().height(104.dp), contentAlignment = Alignment.Center) {
-            if (preview != null) {
+            if (preview != null && market.kind == OwlKind.App) {
+                // A whole phone screen would be a sliver this high: its top, as wide as the card, reads as the app.
+                Image(preview, null, Modifier.fillMaxSize(), alignment = Alignment.TopCenter, contentScale = ContentScale.FillWidth)
+            } else if (preview != null) {
                 Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             } else {
                 Box(Modifier.fillMaxSize().background(Palette.surface), contentAlignment = Alignment.Center) {
