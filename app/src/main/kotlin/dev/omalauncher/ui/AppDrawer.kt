@@ -721,10 +721,10 @@ internal fun AppPanel(
                         Box(Modifier.fillMaxSize()) {
                             // Search results bottom-up, so the best match sits right above the bar; the full list reads
                             // top-down from its start, like stock drawers, so a drag down there closes the panel right away.
-                            // A picked rail letter pins its bucket to the bottom, by the thumb, instead of the top.
-                            // The picked letter badge rides along at the bottom until ★ clears it.
+                            // Search results and a picked rail letter pin to the bottom, by the thumb and the bar.
+                            // The picked letter badge rides along at the top until ★ clears it.
                             val corner = railLetter
-                            val pinned = corner != null
+                            val pinned = corner != null || shown == null
                             var rows = 0
                             LazyColumn(
                                 state = listState,
@@ -732,7 +732,7 @@ internal fun AppPanel(
                                 verticalArrangement = if (pinned) Arrangement.Bottom else Arrangement.Top,
                                 modifier = Modifier.fillMaxWidth().then(if (pinned) Modifier.align(Alignment.BottomCenter) else Modifier).nestedScroll(pullToClose).padding(end = if (railLetters.isNotEmpty()) 36.dp else 0.dp),
                                 // The picked letter badge stays top-left; the list starts below it.
-                                contentPadding = PaddingValues(top = if (pinned) 52.dp else 8.dp, bottom = 4.dp),
+                                contentPadding = PaddingValues(top = if (corner != null) 52.dp else 8.dp, bottom = 4.dp),
                             ) {
                                 entries.forEach { entry ->
                                     when (entry) {
