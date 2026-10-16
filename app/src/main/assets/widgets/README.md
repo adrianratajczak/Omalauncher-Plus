@@ -84,7 +84,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web and `sound` 8; using them without declaring it is an error |
+| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -398,7 +398,7 @@ A file can also be an app instead of a widget: a screen of its own, listed in th
 The nodes at the top are the whole view, with the room and limits of a `screen { }`, and it takes
 the same declarations as a widget (sources, state, lets, components, triggers, `requires`, `meta`).
 There's no tile, so no `size`, `minSize`, `page`, `order`, `padding`, `background`, `onTap` or
-`screen { }`; the properties are `title`, `icon` and `back` (with its `onBack`), and `close()` closes it. Apps need owl 8 and
+`screen { }`; the properties are `title`, `icon`, `back` (with its `onBack`) and `edge`, and `close()` closes it. Apps need owl 8 and
 run only while open.
 
 ```owl
@@ -423,6 +423,26 @@ app "notes" {
 and no margin, so the app decides where its content sits. For text, lists and forms, give the top
 node `padding: [12, 0]`, which lines them up with the title. Leave it off (or pad only the parts
 inside) for what should run to the edges, like a photo, a map, a canvas or a bar along the bottom.
+
+**Under the navigation bar.** An app ends above Android's navigation bar (the gesture handle or the
+three buttons). With `edge: true` it runs on under it, like a list that scrolls behind the bar:
+`screenHeight` then reaches the screen's bottom, and `screenInset` is how much of it the bar covers,
+in dp (0 without `edge`, and while the keyboard is up). Taps there go to Android, so keep buttons
+and the last row of a list above it: end a scrolling list with `Spacer { height: screenInset }`, and
+pad a view with buttons along its bottom by `screenInset`. `edge` is `true` or `false`, not an expression.
+
+```owl
+app "photos" {
+  meta { owl: 8 }
+  edge: true
+  Column {
+    scroll: true
+    padding: [12, 0]
+    for p in range(40) { Text { text: "photo ${p}" } }
+    Spacer { height: screenInset }   // the last row scrolls up clear of the bar
+  }
+}
+```
 
 **Going back.** An app with views inside it (a list, then one item) says when Back goes up a
 level with `back`, and how with `onBack`. While `back` is true, the window shows a chevron before

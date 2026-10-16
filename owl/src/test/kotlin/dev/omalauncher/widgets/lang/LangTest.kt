@@ -630,6 +630,14 @@ class LangTest {
         assertNull(Compiler.compile("app {\n meta { owl: 8 }\n Text { text: 1 } }").onBack)
     }
 
+    @Test fun edgeAppsDrawUnderTheNavigationBar() {
+        val app = Compiler.compile("app {\n meta { owl: 8 }\n edge: true\n Column { scroll: true\n Spacer { height: screenInset } } }")
+        assertTrue(app.edge)
+        assertFalse(Compiler.compile("app {\n meta { owl: 8 }\n Text { text: 1 } }").edge)
+        assertTrue(compileError("app {\n meta { owl: 8 }\n state e = true\n edge: e\n Text { text: 1 } }").contains("edge is true or false"))
+        assertTrue(compileError("widget {\n meta { owl: 7 }\n Text { text: screenInset } }").contains("screenInset needs owl 8"))
+    }
+
     @Test fun appsAreScreensOfTheirOwn() {
         val app = Compiler.compile("app \"Notes\" {\n meta { owl: 8 }\n title: \"My notes\"\n state n = 0\n Column { Text { text: n }\n Button { text: \"x\"; onTap: close() } } }")
         assertEquals(OwlKind.App, app.kind)
@@ -642,7 +650,7 @@ class LangTest {
         assertEquals(OwlKind.Widget, Compiler.compile("widget {\n Text { text: 1 } }").kind)
 
         assertTrue(compileError("app {\n Text { text: 1 } }").contains("needs owl 8"))
-        assertTrue(compileError("app {\n meta { owl: 8 }\n size: 2x2\n Text { text: 1 } }").contains("only takes title, icon and back"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n size: 2x2\n Text { text: 1 } }").contains("only takes title, icon, back and edge"))
         assertTrue(compileError("app {\n meta { owl: 8 }\n onTap: close()\n Text { text: 1 } }").contains("handlers go on the nodes"))
         assertTrue(compileError("app {\n meta { owl: 8 }\n back: true\n Text { text: 1 } }").contains("back and onBack go together"))
         assertTrue(compileError("app {\n meta { owl: 8 }\n onBack: close()\n Text { text: 1 } }").contains("back and onBack go together"))

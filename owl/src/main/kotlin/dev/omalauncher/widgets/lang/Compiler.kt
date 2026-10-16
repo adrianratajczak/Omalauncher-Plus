@@ -113,7 +113,7 @@ class Compiler private constructor(
                 // owl 7: more of the phone, without new permissions.
                 listOf("android.alarm", "android.modes", "torch", "share", "haptic").associateWith { 7 } +
                 // owl 8: apps, files that aren't tiles; the phone's apps as a list; images and sounds from the web; values in URLs.
-                listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc", "post").associateWith { 8 }
+                listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc", "post", "screenInset").associateWith { 8 }
 
         private const val WEB_IMAGE = "an image from the web"
 
@@ -150,7 +150,7 @@ class Compiler private constructor(
         val NOTIFICATION = setOf("open", "dismiss")
 
         /** The tile's size, readable anywhere a declaration of the same name doesn't shadow it. */
-        val TILE = setOf("cols", "rows", "tileWidth", "tileHeight", "screenWidth", "screenHeight", "corners")
+        val TILE = setOf("cols", "rows", "tileWidth", "tileHeight", "screenWidth", "screenHeight", "screenInset", "corners")
 
         /** Whether Linux is installed and running, for widgets with `optional` sources. Shadowable like [TILE]. */
         const val LINUX = "linux"
@@ -378,7 +378,12 @@ class Compiler private constructor(
         triggers: List<Trigger>,
     ): Program {
         since("app \"…\" { }", 0)
-        for (p in body.props) if (p.name !in setOf("title", "icon", "back")) fail("an app only takes title, icon and back (no size or page: it isn't a tile)", p.pos)
+        for (p in body.props) if (p.name !in setOf("title", "icon", "back", "edge")) fail("an app only takes title, icon, back and edge (no size or page: it isn't a tile)", p.pos)
+        // Drawn under the navigation bar: fixed in the file, since the whole view moves when it changes.
+        val edge =
+            body.props.firstOrNull { it.name == "edge" }?.let { p ->
+                ((p.value as? Expr.Lit)?.value as? Bool)?.v ?: fail("edge is true or false, not an expression", p.pos)
+            } ?: false
         // The drawer draws it before the app runs, so it's fixed in the file, not an expression: an SVG, or an asset's image.
         val iconProp = body.props.firstOrNull { it.name == "icon" }
         val iconImage =
@@ -425,6 +430,7 @@ class Compiler private constructor(
             screenTitle = body.props.firstOrNull { it.name == "title" }?.let { ex(it.value, root) },
             back = backProp?.let { ex(it.value, root) },
             onBack = onBackHandler?.let { handler(it, root) },
+            edge = edge,
             onTap = null,
             triggers = triggers,
             commands = commands.toList(),

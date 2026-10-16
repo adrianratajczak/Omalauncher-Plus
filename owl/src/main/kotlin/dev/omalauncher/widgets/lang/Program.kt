@@ -21,7 +21,8 @@ interface Host {
 
     /**
      * The tile's size: cols and rows in grid cells, tileWidth and tileHeight in dp; null until it's laid out.
-     * Also screenWidth and screenHeight (its screen's size), linux: whether Linux is installed and running,
+     * Also screenWidth and screenHeight (its screen's size), screenInset (how much of its bottom the
+     * navigation bar covers, for an app with `edge`), linux: whether Linux is installed and running,
      * and corners: the launcher's corner style as a radius scale, 0 (edge), 0.5 (soft) or 1 (round).
      */
     fun tile(name: String): Value = Null
@@ -299,6 +300,8 @@ class Program(
     /** An app's `back`: while true, the frame shows a back chevron and Back runs [onBack] instead of closing it. */
     val back: Ev? = null,
     val onBack: Action? = null,
+    /** An app's `edge`: its view runs on under the navigation bar, which `screenInset` measures. */
+    val edge: Boolean = false,
     val onTap: Action?,
     val triggers: List<Trigger>,
     /** Shell commands this widget can run, known without running it; for reviewing shared widgets. */

@@ -337,6 +337,13 @@ class WidgetInstance(
         screenSize.value = listOf(widthDp, heightDp)
     }
 
+    /** How much of the screen's bottom the navigation bar covers, in dp: only an app with `edge` draws there. */
+    private val screenInset = mutableDoubleStateOf(0.0)
+
+    fun setScreenInset(dp: Double) {
+        screenInset.doubleValue = dp
+    }
+
     override fun tile(name: String): Value {
         val v =
             when (name) {
@@ -344,6 +351,7 @@ class WidgetInstance(
                 "corners" -> return Num(LauncherStyle.cornerScale.toDouble())
                 "screenWidth" -> screenSize.value[0]
                 "screenHeight" -> screenSize.value[1]
+                "screenInset" -> screenInset.doubleValue
                 "cols" -> tileSize.value[0]
                 "rows" -> tileSize.value[1]
                 "tileWidth" -> tileSize.value[2]
