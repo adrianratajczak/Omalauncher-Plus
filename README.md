@@ -99,8 +99,7 @@ accent, reapplied on every theme change); labels on/off for home and drawer;
 a switch hiding the Linux session notification (gone while idle, still shows
 installs and errors); a corner radius slider (theme, or 0 to 60px over the
 whole launcher); and a blurred widget background switch (per-tile frost
-sampling the wallpaper). Home tiles cascade in top-down on entry, drawer
-cells on open. Long-pressing home also offers settings next to the themes.
+sampling the wallpaper). Long-pressing home also offers settings next to the themes.
 
 ### Lockscreen (`lockscreen/`)
 

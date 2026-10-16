@@ -95,8 +95,6 @@ class MainActivity : ComponentActivity() {
         runtime.androidApps.checkShortcutAccess()
         // A pack installed or removed while away, or a new version of the one chosen: its icons are drawn again.
         runtime.reloadIconPacks()
-        // Coming home: the grid breathes in a little zoom.
-        runtime.nudgeHome()
         // The user may have set or replaced the wallpaper while we were in the background.
         lifecycleScope.launch { runtime.themes.refreshLiveWallpaper() }
     }

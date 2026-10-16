@@ -51,6 +51,10 @@ object PlusPrefs {
     var widgetBlur by mutableStateOf(false)
         private set
 
+    /** Pins drawer app rows to the right edge, by the letter rail; left otherwise. */
+    var drawerAlignRight by mutableStateOf(false)
+        private set
+
     /** Reads the saved Plus settings; called once when the launcher starts. */
     fun load(context: Context) {
         val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
@@ -69,6 +73,7 @@ object PlusPrefs {
                 else -> TintSource.Custom
             }
         widgetBlur = prefs.getBoolean(WIDGET_BLUR, false)
+        drawerAlignRight = prefs.getBoolean(DRAWER_ALIGN_RIGHT, false)
         // An earlier Plus saved a scale (0 theme-edge .. 2 full); a scale step is 16px of radius.
         val saved = prefs.getFloat(CORNERS, -1f)
         cornerPx = if (saved < 0f) null else (if (saved <= 2f) saved * 16f else saved).coerceIn(0f, 60f)
@@ -179,6 +184,15 @@ object PlusPrefs {
         context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(WIDGET_BLUR, blur).apply()
     }
 
+    /** Pins drawer rows left or right and saves it; the drawer redraws itself. */
+    fun setDrawerAlignRight(
+        context: Context,
+        right: Boolean,
+    ) {
+        drawerAlignRight = right
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(DRAWER_ALIGN_RIGHT, right).apply()
+    }
+
     private const val HIDE_LINUX = "plus_hide_linux_notification"
     private const val CORNERS = "plus_corners"
     private const val HIDE_LABELS = "plus_hide_labels"
@@ -189,4 +203,5 @@ object PlusPrefs {
     private const val TINT_THEME = "plus_tint_theme"
     private const val ADAPTIVE_BACKGROUND = "plus_adaptive_background"
     private const val WIDGET_BLUR = "plus_widget_blur"
+    private const val DRAWER_ALIGN_RIGHT = "plus_drawer_align_right"
 }

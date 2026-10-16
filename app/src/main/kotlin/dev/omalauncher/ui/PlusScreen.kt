@@ -180,6 +180,17 @@ fun PlusScreen(
                     onToggle = { PlusPrefs.setHideLabels(context, !PlusPrefs.hideLabels) },
                 )
             }
+            item(key = "drawer-label") {
+                SectionLabel("drawer", Modifier.padding(start = 8.dp, top = 6.dp))
+            }
+            item(key = "drawer-align") {
+                PlusSwitch(
+                    title = "align apps right",
+                    subtitle = "pins drawer rows to the letter rail · off keeps them left",
+                    on = PlusPrefs.drawerAlignRight,
+                    onToggle = { PlusPrefs.setDrawerAlignRight(context, !PlusPrefs.drawerAlignRight) },
+                )
+            }
             item(key = "search-label") {
                 SectionLabel("search", Modifier.padding(start = 8.dp, top = 6.dp))
             }

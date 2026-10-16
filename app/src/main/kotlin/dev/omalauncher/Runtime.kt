@@ -312,14 +312,6 @@ class Runtime(
         redrawLinuxIcons()
     }
 
-    /** Bumped whenever home shows again; the grid breathes in a little zoom. */
-    var homeZoom by mutableStateOf(0)
-        private set
-
-    fun nudgeHome() {
-        homeZoom++
-    }
-
     /** Guest configs follow the theme and the installed agents; only while there is a guest. */
     private fun syncGuest() {
         if (linux) provisioner.sync()

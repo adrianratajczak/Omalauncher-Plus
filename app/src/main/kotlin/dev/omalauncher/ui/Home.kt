@@ -44,7 +44,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -168,15 +167,6 @@ fun HomeScreen(
         if (agent == null) state.show(SettingsPage.Agents) else runtime.terminal(editWidgetCommand(agent.bin, item.spec), "Edit ${item.spec.name}", agent)
     }
 
-    // Every home entry cascades the tiles in top-down: coming back, and closing the drawer.
-    val panelShown by remember(state) { derivedStateOf { state.drawer.value > 0.01f } }
-    var closes by remember { mutableIntStateOf(0) }
-    var wasShown by remember { mutableStateOf(false) }
-    LaunchedEffect(panelShown) {
-        if (wasShown && !panelShown) closes++
-        wasShown = panelShown
-    }
-    val enterEpoch = runtime.homeZoom + closes
     // Overlays below are siblings of the pager inside this Box, so they never change the page's size.
     val density = LocalDensity.current
     val ime = WindowInsets.ime
@@ -271,7 +261,6 @@ fun HomeScreen(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             wallpaper = runtime.themes.wallpaper,
             wallpaperOffset = { state.wallpaperOffset },
-            enterEpoch = enterEpoch,
             selected = state.editing,
             onSelect = { state.editing = it },
             actions = { item ->
