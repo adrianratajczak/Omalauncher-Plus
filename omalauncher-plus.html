@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>omalauncher+ — customowy launcher na Androida</title>
+<style>
+  :root {
+    --bg: #1a1b26;
+    --panel: #24283b;
+    --line: #3b4261;
+    --fg: #c0caf5;
+    --muted: #7a86ad;
+    --accent: #7aa2f7;
+    --green: #9ece6a;
+    --red: #f7768e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 20px 64px; }
+  header.top { border: 1px solid var(--line); background: var(--panel); padding: 28px 24px; }
+  header.top .prompt { color: var(--green); }
+  h1 { margin: 8px 0 4px; font-size: 30px; letter-spacing: -0.5px; }
+  h1 .plus { color: var(--accent); }
+  .tagline { color: var(--muted); margin: 0 0 16px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge {
+    border: 1px solid var(--line);
+    padding: 2px 10px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .badge b { color: var(--accent); font-weight: normal; }
+  nav {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin: 24px 0; padding: 12px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  nav a { color: var(--muted); text-decoration: none; font-size: 13px; }
+  nav a:hover { color: var(--accent); }
+  nav a::before { content: "# "; color: var(--line); }
+  section {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    margin: 0 0 16px;
+    padding: 20px 22px;
+  }
+  section h2 { margin: 0 0 4px; font-size: 18px; font-weight: bold; }
+  section h2::before { content: "// "; color: var(--accent); }
+  section .lede { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 6px 0; }
+  li::marker { color: var(--accent); }
+  li b { color: var(--fg); font-weight: bold; }
+  li span.d { color: var(--muted); }
+  code, .key {
+    font-family: inherit;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    padding: 0 6px;
+    font-size: 13px;
+    color: var(--green);
+    white-space: nowrap;
+  }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: normal; }
+  td:first-child { color: var(--green); white-space: nowrap; }
+  .removed { border-color: var(--red); }
+  .removed h2::before { content: "xx "; color: var(--red); }
+  footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+  footer a { color: var(--accent); }
+  @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } h1 { font-size: 24px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="prompt">$ fork --plus upstream</div>
+    <h1>omalauncher<span class="plus">+</span></h1>
+    <p class="tagline">Customowy fork launchera omalauncher — ikony, motywy dzień/noc, szybki drawer i pełna kontrola z jednego ekranu ustawień.</p>
+    <div class="badges">
+      <span class="badge">branch <b>omalauncher-plus</b></span>
+      <span class="badge">upstream <b>simonschubert/omalauncher</b></span>
+      <span class="badge">prefs <b>plus_*</b></span>
+      <span class="badge">ekran <b>omalauncher+</b></span>
+    </div>
+  </header>
+
+  <nav>
+    <a href="#ikony">ikony</a>
+    <a href="#dzien-noc">dzień/noc</a>
+    <a href="#home">home</a>
+    <a href="#drawer">drawer</a>
+    <a href="#bar">bar</a>
+    <a href="#gesty">gesty</a>
+    <a href="#lockscreen">lockscreen</a>
+    <a href="#powiadomienia">powiadomienia</a>
+    <a href="#wyglad">wygląd</a>
+    <a href="#klucze">klucze</a>
+    <a href="#historia">historia</a>
+  </nav>
+
+  <section id="ikony">
+    <h2>ikony</h2>
+    <p class="lede">ui/IconPacks.kt · ui/IconPackScreen.kt · ui/IconSize.kt · AndroidApps.kt</p>
+    <div class="cols">
+      <ul>
+        <li><b>icon packi</b> <span class="d">— packi third-party (Nova, ADW, GO, Apex, Tesla, Fede, Motorola, Sony); parsowany appfilter.xml: mapowania, scale, iconback/mask/upon</span></li>
+        <li><b>rozmiar</b> <span class="d">— slot 0.8x / 1x / 1.25x, przerysowanie wszystkich ikon</span></li>
+        <li><b>kształt</b> <span class="d">— system / koło / squircle</span></li>
+        <li><b>adaptive background</b> <span class="d">— off rysuje same logo</span></li>
+      </ul>
+      <ul>
+        <li><b>grayscale</b> <span class="d">— ikony odbarwione</span></li>
+        <li><b>tint</b> <span class="d">— off / custom / theme accent; gradient top→bottom, swatche + #rrggbb, reaplikacja przy zmianie motywu</span></li>
+        <li><b>labelki osobno</b> <span class="d">— hide home labels i hide drawer labels jako dwa przełączniki</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="dzien-noc">
+    <h2>dzień &amp; noc</h2>
+    <p class="lede">Runtime.syncDayNight · PlusPrefs.wantedTheme · MainActivity.onResume</p>
+    <ul>
+      <li><b>automatic themes</b> <span class="d">— przełącznik trybu auto; gdy włączone, harmonogram wygrywa z ręczną edycją style.toml</span></li>
+      <li><b>day theme / night theme</b> <span class="d">— osobny motyw na dzień i noc; <span class="key">none</span> zostawia to co jest</span></li>
+      <li><b>day starts / night starts</b> <span class="d">— godziny 0–23, zakres dnia może przechodzić przez północ</span></li>
+      <li><b>sync</b> <span class="d">— przy powrocie na home i co minutę, gdy home widoczny; motyw spoza dysku aplikuje bundled kolory i dociąga resztę</span></li>
+    </ul>
+  </section>
+
+  <section id="home">
+    <h2>home / ostatnie</h2>
+    <p class="lede">AppDrawer.kt RecentStrip · Home.kt · Launcher.kt · SideRail.kt</p>
+    <ul>
+      <li><b>recent apps on/off</b> <span class="d">— chowa cały strip (portret i boczny rail); wyłączony zwalnia miejsce, siatka nie zostawia pustego paska</span></li>
+      <li><b>hide from recents</b> <span class="d">— long-press na apce w stripie; znika od razu, historia użyć nietknięta, po odkryciu wraca</span></li>
+      <li><b>lista ukrytych</b> <span class="d">— w sekcji drawer w omalauncher+, tap przywraca; działa też dla profilu work i skrótów</span></li>
+    </ul>
+  </section>
+
+  <section id="drawer">
+    <h2>drawer</h2>
+    <p class="lede">AppDrawer.kt — drawerEntries · filterRail · LetterRail · AppPanel</p>
+    <ul>
+      <li><b>letter rail jak w Niagari</b> <span class="d">— alfabet na prawej krawędzi, tap/drag filtruje do litery, ★ czyści</span></li>
+      <li><b>corner letter</b> <span class="d">— wybrana litera w lewym górnym rogu (tap czyści), duża na środku podczas jazdy palcem</span></li>
+      <li><b>bottom pinning</b> <span class="d">— bucket dokleja się do dołu pod kciuk, treść przepakowana w pełne rzędy bez dziur</span></li>
+      <li><b>align apps right</b> <span class="d">— przełącznik; apki tulą się do raila</span></li>
+      <li><b>wyniki rosną od dołu</b> <span class="d">— najlepszy traf tuż nad barem</span></li>
+    </ul>
+  </section>
+
+  <section id="bar">
+    <h2>bar i search</h2>
+    <p class="lede">AppPanel · ActionRow · ekran search w ustawieniach</p>
+    <ul>
+      <li><b>search store / search web</b> <span class="d">— akcje nad barem; Enter pyta agenta, strzałki/Tab chodzą po apps/store/web/ask</span></li>
+      <li><b>silnik webu</b> <span class="d">— Google, DuckDuckGo, Bing albo własny URL z {q}</span></li>
+      <li><b>sklep</b> <span class="d">— Play albo F-Droid</span></li>
+    </ul>
+  </section>
+
+  <section id="gesty">
+    <h2>gesty</h2>
+    <p class="lede">ui/Gestures.kt · ui/StatusBar.kt</p>
+    <ul>
+      <li><b>swipe up</b> <span class="d">— otwiera drawer</span></li>
+      <li><b>swipe down</b> <span class="d">— rozwija notification shade jak w stock launcherach</span></li>
+    </ul>
+  </section>
+
+  <section id="lockscreen">
+    <h2>lockscreen</h2>
+    <p class="lede">osobny moduł lockscreen/ · APK dev.omalauncher.plus.lockscreen</p>
+    <ul>
+      <li><b>zegar nad systemowym lock screenem</b> <span class="d">— foreground service na screen-off</span></li>
+      <li><b>dokładane bloki</b> <span class="d">— clock, date, battery, actions</span></li>
+    </ul>
+  </section>
+
+  <section id="powiadomienia">
+    <h2>powiadomienia</h2>
+    <p class="lede">LinuxService.kt</p>
+    <ul>
+      <li><b>hide linux notification</b> <span class="d">— cicha notyfikacja sesji Linux; instalacje i błędy dalej widać</span></li>
+    </ul>
+  </section>
+
+  <section id="wyglad">
+    <h2>wygląd</h2>
+    <p class="lede">Theme.kt · LauncherStyle · style.toml</p>
+    <ul>
+      <li><b>corners</b> <span class="d">— theme albo custom 0–60px sliderem</span></li>
+      <li><b>blurred background</b> <span class="d">— frost per-kafelek z tapety (Android 12+)</span></li>
+      <li><b>frame glow</b> <span class="d">— potrójny gasnący ring z jasnym rdzeniem</span></li>
+    </ul>
+  </section>
+
+  <section id="klucze">
+    <h2>klucze prefs</h2>
+    <p class="lede">SharedPreferences "launcher" — wszystko pod plus_*, bez kolizji z upstreamem</p>
+    <table>
+      <tr><th>klucz</th><th>znaczenie</th></tr>
+      <tr><td>plus_icon_shape</td><td>kształt ikon</td></tr>
+      <tr><td>plus_grayscale_icons</td><td>odbarwienie ikon</td></tr>
+      <tr><td>plus_icon_tint / _bottom</td><td>tint custom góra/dół</td></tr>
+      <tr><td>plus_tint_theme</td><td>tint z accenta motywu</td></tr>
+      <tr><td>plus_adaptive_background</td><td>backdrop adaptive icons</td></tr>
+      <tr><td>plus_day_night_auto</td><td>auto day/night</td></tr>
+      <tr><td>plus_day_theme / plus_night_theme</td><td>motywy dnia/nocy</td></tr>
+      <tr><td>plus_day_hour / plus_night_hour</td><td>godziny przełączeń</td></tr>
+      <tr><td>plus_show_recents</td><td>strip ostatnie apki</td></tr>
+      <tr><td>plus_recent_hidden</td><td>ukryte ze stripa (set)</td></tr>
+      <tr><td>plus_hide_home_labels</td><td>labelki home</td></tr>
+      <tr><td>plus_hide_drawer_labels</td><td>labelki drawer</td></tr>
+      <tr><td>plus_drawer_align_right</td><td>wyrównanie wierszy</td></tr>
+      <tr><td>plus_widget_blur</td><td>frost za widgetami</td></tr>
+      <tr><td>plus_hide_linux_notification</td><td>cicha notyfikacja Linux</td></tr>
+      <tr><td>plus_corners</td><td>promień rogów</td></tr>
+    </table>
+  </section>
+
+  <section id="historia">
+    <h2>historia</h2>
+    <p class="lede">wygroundowane z gałęzi omalauncher-plus</p>
+    <ul>
+      <li><span class="key">82f8aee</span> <b>day and night</b> <span class="d">— motywy dzień/noc z auto-przełączaniem</span></li>
+      <li><span class="key">5480b98</span> <b>labelki 2x</b> <span class="d">— osobno home i drawer</span></li>
+      <li><span class="key">668f87c</span> <b>recents</b> <span class="d">— toggle stripa, hide from recents, regroup ekranu</span></li>
+      <li><span class="key">b3268da</span> <b>drawer+</b> <span class="d">— koniec kaskad, bottom pin + repack, align prawo/lewo</span></li>
+      <li><span class="key">ed1cccd</span> <b>duotone</b> <span class="d">— tint per-pixel, hook theme accent</span></li>
+      <li><span class="key">71c8e10</span> <b>frost/tint</b> <span class="d">— per-tile frost, gradient, home settings</span></li>
+      <li><span class="key">619ae15</span> <b>tint/blur</b> <span class="d">— picker tinta, blurred widget bg</span></li>
+      <li><span class="key">9705e20 / abafc6e</span> <b>glow</b> <span class="d">— trzy gasnące ringi z jasnym rdzeniem</span></li>
+      <li><span class="key">4e7a93b</span> <b>notif/corners</b> <span class="d">— hide linux notif, corner slider, frame glow, szybszy drawer</span></li>
+      <li><span class="key">94811a8 / 788b3e6</span> <b>rail</b> <span class="d">— literowy rail jak w Niagari + corner letter</span></li>
+      <li><span class="key">f2abf74</span> <b>start Plus</b> <span class="d">— fundament ustawień omalauncher+</span></li>
+      <li><span class="key">3883438</span> <b>lockscreen</b> <span class="d">— osobny moduł z blokami</span></li>
+      <li><span class="key">7979b14</span> <b>bar</b> <span class="d">— akcje web/store, ustawienia silnika i sklepu</span></li>
+      <li><span class="key">48e0e94</span> <b>packi/rozmiar</b> <span class="d">— custom icon packs + rozmiar ikon</span></li>
+      <li><span class="key">846ce2a</span> <b>shade</b> <span class="d">— swipe down rozwija notification shade</span></li>
+    </ul>
+  </section>
+
+  <section class="removed">
+    <h2>usunięte</h2>
+    <p class="lede">decyzje, nie bugi</p>
+    <ul>
+      <li><b>kaskady enter</b> <span class="d">— animacje wejścia kafelków działały nierówno, wywalone w całości</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    omalauncher+ · fork simonschubert/omalauncher · branch omalauncher-plus · pełny spis w <a href="PLUS.md">PLUS.md</a>
+  </footer>
+
+</div>
+</body>
+</html>
