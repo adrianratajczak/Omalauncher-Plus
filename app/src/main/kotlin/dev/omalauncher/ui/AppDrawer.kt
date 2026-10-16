@@ -962,7 +962,7 @@ private fun AppCell(
         }
         Spacer(Modifier.height(6.dp))
         // Plus can hide the names; the icons keep their room either way.
-        if (!PlusPrefs.hideLabels) {
+        if (!PlusPrefs.hideDrawerLabels) {
             BasicText(
                 label,
                 style = Mono.copy(fontSize = TextSize.Small, textAlign = TextAlign.Center),

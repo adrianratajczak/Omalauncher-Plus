@@ -19,8 +19,12 @@ object PlusPrefs {
     var hideLinuxNotification by mutableStateOf(false)
         private set
 
-    /** Hides app names under icons, on home and in the drawer; icons grow into the room. */
-    var hideLabels by mutableStateOf(false)
+    /** Hides app names under home icons; tiles grow into the room. */
+    var hideHomeLabels by mutableStateOf(false)
+        private set
+
+    /** Hides app names under drawer icons. */
+    var hideDrawerLabels by mutableStateOf(false)
         private set
 
     /** Reshapes every app icon; system keeps each icon as it ships. */
@@ -67,7 +71,10 @@ object PlusPrefs {
     fun load(context: Context) {
         val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
         hideLinuxNotification = prefs.getBoolean(HIDE_LINUX, false)
-        hideLabels = prefs.getBoolean(HIDE_LABELS, false)
+        // The old single labels switch becomes both new ones.
+        val legacyHide = prefs.getBoolean(HIDE_LABELS, false)
+        hideHomeLabels = if (prefs.contains(HOME_LABELS)) prefs.getBoolean(HOME_LABELS, false) else legacyHide
+        hideDrawerLabels = if (prefs.contains(DRAWER_LABELS)) prefs.getBoolean(DRAWER_LABELS, false) else legacyHide
         iconShape = IconShape.of(prefs.getString(ICON_SHAPE, null))
         grayscaleIcons = prefs.getBoolean(GRAYSCALE, false)
         adaptiveBackground = prefs.getBoolean(ADAPTIVE_BACKGROUND, true)
@@ -107,13 +114,22 @@ object PlusPrefs {
         context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putFloat(CORNERS, px ?: -1f).apply()
     }
 
-    /** Hides app names under icons and saves it; the tiles redraw themselves. */
-    fun setHideLabels(
+    /** Hides app names under home icons and saves it; the tiles redraw themselves. */
+    fun setHideHomeLabels(
         context: Context,
         hide: Boolean,
     ) {
-        hideLabels = hide
-        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(HIDE_LABELS, hide).apply()
+        hideHomeLabels = hide
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(HOME_LABELS, hide).apply()
+    }
+
+    /** Hides app names under drawer icons and saves it. */
+    fun setHideDrawerLabels(
+        context: Context,
+        hide: Boolean,
+    ) {
+        hideDrawerLabels = hide
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(DRAWER_LABELS, hide).apply()
     }
 
     /** Reshapes app icons and saves it; the caller redraws the icons. */
@@ -225,6 +241,8 @@ object PlusPrefs {
     private const val HIDE_LINUX = "plus_hide_linux_notification"
     private const val CORNERS = "plus_corners"
     private const val HIDE_LABELS = "plus_hide_labels"
+    private const val HOME_LABELS = "plus_hide_home_labels"
+    private const val DRAWER_LABELS = "plus_hide_drawer_labels"
     private const val ICON_SHAPE = "plus_icon_shape"
     private const val GRAYSCALE = "plus_grayscale_icons"
     private const val ICON_TINT = "plus_icon_tint"

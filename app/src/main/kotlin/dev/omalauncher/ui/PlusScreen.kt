@@ -184,12 +184,20 @@ fun PlusScreen(
             item(key = "labels-label") {
                 SectionLabel("labels", Modifier.padding(start = 8.dp, top = 6.dp))
             }
-            item(key = "hide-labels") {
+            item(key = "hide-home-labels") {
                 PlusSwitch(
-                    title = "hide app labels",
-                    subtitle = "no names under icons, on home and in the drawer",
-                    on = PlusPrefs.hideLabels,
-                    onToggle = { PlusPrefs.setHideLabels(context, !PlusPrefs.hideLabels) },
+                    title = "hide home labels",
+                    subtitle = "no names under icons on home",
+                    on = PlusPrefs.hideHomeLabels,
+                    onToggle = { PlusPrefs.setHideHomeLabels(context, !PlusPrefs.hideHomeLabels) },
+                )
+            }
+            item(key = "hide-drawer-labels") {
+                PlusSwitch(
+                    title = "hide drawer labels",
+                    subtitle = "no names under icons in the drawer",
+                    on = PlusPrefs.hideDrawerLabels,
+                    onToggle = { PlusPrefs.setHideDrawerLabels(context, !PlusPrefs.hideDrawerLabels) },
                 )
             }
             item(key = "drawer-label") {
