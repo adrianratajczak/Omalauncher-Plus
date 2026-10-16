@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.omalauncher.readUpTo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -148,7 +149,7 @@ class Gpu(
             val legacy = guestFile(GpuDrivers.LEGACY_MALI_ICD).toPath()
             val head = runCatching {
                 if (!Files.isRegularFile(legacy, LinkOption.NOFOLLOW_LINKS)) return@runCatching null
-                Files.newInputStream(legacy).use { it.readNBytes(4096).decodeToString() }
+                Files.newInputStream(legacy).use { it.readUpTo(4096).decodeToString() }
             }.getOrNull()
             if (head?.contains(driver.driverPath) == true) Files.deleteIfExists(legacy)
         }
