@@ -2,10 +2,10 @@
 
 # Omalauncher+
 
-**Launcher w stylu Omarchy, na sterydach.** Fork
+**An Omarchy-style launcher on steroids.** A fork of
 [SimonSchubert/omalauncher](https://github.com/SimonSchubert/omalauncher)
-(upstream **0.7.2**) — wszystko co upstream, plus cała lista niżej.
-Instaluje się **obok** oryginału (`dev.omalauncher.plus`).
+(upstream **0.7.2**) — everything upstream does, plus the whole list below.
+It installs **side by side** with the original (`dev.omalauncher.plus`).
 
 [![Download APK](https://img.shields.io/badge/Download-APK-7aa2f7?style=for-the-badge&logo=android)](https://github.com/adrianratajczak/Omalauncher-Plus/releases)
 [![Po polsku](https://img.shields.io/badge/Czytaj-po_polsku-9ece6a?style=for-the-badge)](README.plus.pl.md)
@@ -29,74 +29,88 @@ fine for sideloading. Requires arm64 + Android 10+.
 
 ## ✨ What's new in this fork
 
-### 🌗 Motywy dzień / noc
+### 🌗 Day & night themes
 
-`omalauncher+ › day & night` — osobny motyw na dzień i na noc
-(`none` zostawia to co jest) plus godziny przełączenia. Zmiana sama
-przy powrocie na home i co minutę, gdy home jest widoczny.
+`omalauncher+ › day & night` — a separate theme for day and night
+(`none` keeps whatever shows) plus the switch hours. It flips on every
+return home and every minute while home is visible.
 
-### 🕘 Ostatnie apki po Twojemu
+### 🕘 Recent apps, your way
 
-Strip nad barem można **wyłączyć w całości** (miejsce wraca do siatki),
-a każdą apkę **long-press → hide from recents** — znika od razu, historia
-użyć zostaje. Ukryte czekają w `omalauncher+ › drawer`, tap przywraca.
+The strip above the bar can be **turned off entirely** (its room goes
+back to the grid), and any app goes **long-press → hide from recents** —
+gone immediately, usage history kept. Hidden ones wait in
+`omalauncher+ › drawer`, one tap brings them back.
 
-### 👍 Drawer pod kciuk
+### 👍 Thumb-friendly drawer
 
-- **Letter rail jak w Niagari** — alfabet na prawej krawędzi, drag filtruje,
-  ★ czyści, litera parkuje w rogu.
-- Bucket **dokleja się do dołu**, nad bar, w pełnych rzędach bez dziur.
-- **Align apps right** przykleja wiersze do raila. Wyniki szukania rosną
-  od dołu, najlepszy tuż nad barem.
+- **Niagara-style letter rail** — alphabet on the right edge, drag filters,
+  ★ clears, the letter parks in the corner.
+- The bucket **pins to the bottom**, above the bar, in full rows with no gaps.
+- **Align apps right** hugs rows to the rail. Search results grow bottom-up,
+  best match right above the bar.
 
-### 🎨 Ikony bez limitów
+### 🎨 Icons without limits
 
-- **Icon packi** third-party (Nova, ADW, GO, Apex, Tesla, Fede, Motorola,
-  Sony) — mapowania, scale, warstwy iconback/mask/upon z `appfilter.xml`.
-- **Rozmiar** 0.8x / 1x / 1.25x, **kształt** system/koło/squircle,
+- **Third-party icon packs** (Nova, ADW, GO, Apex, Tesla, Fede, Motorola,
+  Sony) — mappings, scale, iconback/mask/upon layers from `appfilter.xml`.
+- **Size** 0.8x / 1x / 1.25x, **shape** system/circle/squircle,
   **adaptive background**, **grayscale**.
-- **Tint**: off / custom / accent motywu; custom to kolor albo gradient
-  duotone top→bottom, swatche + `#rrggbb`.
-- **Labelki osobno** dla home i drawera.
+- **Tint**: off / custom / theme accent; custom is a color or a duotone
+  top→bottom gradient, swatches + `#rrggbb`.
+- **Labels separately** for home and the drawer.
 
-### 🔍 Bar, który też szuka
+### 🔍 A bar that also searches
 
-Wiersze **search store / search web** nad barem (Enter pyta agenta);
-silnik webu (Google, DuckDuckGo, Bing, własny URL z `{q}`) i sklep
-(Play / F-Droid) do wyboru.
+**Search store / search web** rows above the bar (Enter asks the agent);
+web engine (Google, DuckDuckGo, Bing, custom `{q}` URL) and store
+(Play / F-Droid) are configurable.
 
-### 👇 Swipe down = shade
+### 👇 Swipe down is the shade
 
-Swipe w dół rozwija notification shade jak w stock launcherach
-(kierunki konfigurowalne w settings › gestures).
+Swipe down anywhere on home pulls down Android's notification shade, like
+stock launchers (both directions configurable in settings › gestures).
 
 ### ⚙️ Everything in one place
 
-`omalauncher+` trzyma swoje extras z dala od upstreamu, w grupach
+`omalauncher+` keeps its extras away from upstream's rows, grouped as
 **icons → day & night → home → drawer → labels → search → widgets →
-notifications → corners**: packi i rozmiar ikon, tint, day/night, toggle
-stripa, align + ukryte apki, labelki, wyciszana notyfikacja Linuxa,
-rogi (theme albo 0–60px), frost per-kafelek z tapety.
+notifications → corners**: icon pack and icon size screens, icon shape
+(system, circle, squircle), adaptive background on/off, grayscale, and
+tint (off, custom colors with an optional top-to-bottom duotone gradient,
+or the theme's accent, reapplied on every theme change); the day/night
+switcher; the recent apps strip toggle; drawer row alignment plus the
+hidden-recents list; labels on/off separately for home and drawer;
+a switch hiding the Linux session notification (gone while idle, still
+shows installs and errors); a corner radius slider (theme, or 0 to 60px
+over the whole launcher); and a blurred widget background switch
+(per-tile frost sampling the wallpaper). Long-pressing home also offers
+settings next to the themes.
 
 ### 🔒 Lockscreen (`lockscreen/`) — soon
 
 > 🚧 Work in progress: the lockscreen module ships in this repo but is
 > still being built; expect rough edges.
 
-Druga apka w repo (`dev.omalauncher.plus.lockscreen`): zegar nad systemowym
-lock screenem + dokładane bloki (clock, date, battery, akcje). Bez Linuxa.
+A second app and APK in this repo: `dev.omalauncher.plus.lockscreen`, a
+clock over the system lock screen in the launcher's monospace voice.
+A foreground service watches for screen-off and raises it with a
+full-screen intent; swipe up dismisses the keyguard (with a PIN set, the
+system's PIN pad shows — the lockscreen never sees credentials). Blocks
+are added and removed in its setup: clock, date, battery level, and
+flashlight/camera shortcuts. No Linux needed.
 
-> Upstream PRs, każdy tylko ze swoim ficzrem: swipe down →
+> Upstream PRs, each with only its feature: swipe down →
 > [#119](https://github.com/SimonSchubert/omalauncher/pull/119),
 > icon packs + icon size →
 > [#121](https://github.com/SimonSchubert/omalauncher/pull/121).
 
 ## 📱 The base: upstream
 
-Ekran domowy w stylu [Omarchy](https://omarchy.org) + opcjonalny Arch Linux
-ARM obok apiek z telefonu: proot bez roota, Wayland, okna Linuxa jako osobne
-taski w Recents. 22 motywy Omarchy z tapetami, widgety w OWL + ich sklep,
-pacman/AUR, terminale, GPU Mali, agenci kodujący z bara.
+An [Omarchy](https://omarchy.org)-style home screen plus optional Arch Linux
+ARM next to the phone apps: rootless proot, Wayland, Linux windows as their
+own Recents tasks. 22 Omarchy themes with wallpapers, OWL widgets + their
+store, pacman/AUR, terminals, Mali GPU, coding agents from the bar.
 
 ![The home screen in twelve Omarchy themes, each with different widgets](art/collage.png)
 
