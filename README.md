@@ -20,14 +20,14 @@ Instaluje się **obok** oryginału (`dev.omalauncher.plus`).
 
 ## ⬇️ Install
 
-1. Pobierz APK z [**Releases**](https://github.com/adrianratajczak/Omalauncher-Plus/releases)
-   (`omalauncher-plus-*.apk`, leży też w [`releases/`](releases/)).
-2. Zainstaluj i ustaw Omalauncher+ jako domyślny launcher.
+1. Download the APK from [**Releases**](https://github.com/adrianratajczak/Omalauncher-Plus/releases)
+   (`omalauncher-plus-*.apk`, also committed under [`releases/`](releases/)).
+2. Install it and set Omalauncher+ as the default launcher.
 
-Bez roota, bez konta, bez reklam. Release podpisane kluczem debug —
-do sideloadu w zupełności wystarcza. Wymaga arm64 + Android 10+.
+No root, no account, no ads. Releases are signed with a debug key —
+fine for sideloading. Requires arm64 + Android 10+.
 
-## ✨ Co nowego w tym forku
+## ✨ What's new in this fork
 
 ### 🌗 Motywy dzień / noc
 
@@ -70,13 +70,7 @@ silnik webu (Google, DuckDuckGo, Bing, własny URL z `{q}`) i sklep
 Swipe w dół rozwija notification shade jak w stock launcherach
 (kierunki konfigurowalne w settings › gestures).
 
-### 🔧 Instalacje agentów, które działają
-
-Agenty npm (OpenCode, Grok, Kimi) przez plain `npm install -g` po mise —
-bez wywalającego się backendu mise; postinstall przechodzi, uwalone kopie
-reinstalują się same.
-
-### ⚙️ Wszystko w jednym miejscu
+### ⚙️ Everything in one place
 
 `omalauncher+` trzyma swoje extras z dala od upstreamu, w grupach
 **icons → day & night → home → drawer → labels → search → widgets →
@@ -84,7 +78,10 @@ notifications → corners**: packi i rozmiar ikon, tint, day/night, toggle
 stripa, align + ukryte apki, labelki, wyciszana notyfikacja Linuxa,
 rogi (theme albo 0–60px), frost per-kafelek z tapety.
 
-### 🔒 Lockscreen (`lockscreen/`)
+### 🔒 Lockscreen (`lockscreen/`) — soon
+
+> 🚧 Work in progress: the lockscreen module ships in this repo but is
+> still being built; expect rough edges.
 
 Druga apka w repo (`dev.omalauncher.plus.lockscreen`): zegar nad systemowym
 lock screenem + dokładane bloki (clock, date, battery, akcje). Bez Linuxa.
@@ -94,7 +91,7 @@ lock screenem + dokładane bloki (clock, date, battery, akcje). Bez Linuxa.
 > icon packs + icon size →
 > [#121](https://github.com/SimonSchubert/omalauncher/pull/121).
 
-## 📱 Baza: upstream
+## 📱 The base: upstream
 
 Ekran domowy w stylu [Omarchy](https://omarchy.org) + opcjonalny Arch Linux
 ARM obok apiek z telefonu: proot bez roota, Wayland, okna Linuxa jako osobne
@@ -110,9 +107,9 @@ pacman/AUR, terminale, GPU Mali, agenci kodujący z bara.
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/04.png" width="24%" alt="Screenshot">
 </p>
 
-Więcej: [README.plus.en.md](README.plus.en.md) (to samo
-[po polsku](README.plus.pl.md)), strona [omalauncher-plus.html](omalauncher-plus.html),
-inwentaryzacja deweloperska [PLUS.md](PLUS.md).
+More: [README.plus.en.md](README.plus.en.md) (same in
+[Polish](README.plus.pl.md)), page [omalauncher-plus.html](omalauncher-plus.html),
+dev inventory [PLUS.md](PLUS.md).
 
 ## ▶️ Using it
 
