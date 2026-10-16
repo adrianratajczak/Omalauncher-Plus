@@ -69,15 +69,19 @@ internal data class GpuDriver(
         }
 }
 
+/** Mesa's CPU Vulkan driver, from Arch's vulkan-swrast. */
+internal const val LAVAPIPE_ICD = "/usr/share/vulkan/icd.d/lvp_icd.json"
+
 /**
- * Software rendering. VK_ICD_FILENAMES and VK_DRIVER_FILES point at a file
- * that is never created, so the loader does not scan the default ICD directories
- * and cannot pick up a driver that was left behind.
+ * Software rendering. VK_ICD_FILENAMES and VK_DRIVER_FILES name only lavapipe,
+ * so the loader does not scan the default ICD directories and cannot pick up a
+ * GPU driver that was left behind, while Vulkan apps still run on the CPU when
+ * vulkan-swrast is installed.
  */
 internal val SOFTWARE_ENV = listOf(
     "LIBGL_ALWAYS_SOFTWARE=1",
-    "VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/omalauncher-software.json",
-    "VK_DRIVER_FILES=/usr/local/share/vulkan/icd.d/omalauncher-software.json",
+    "VK_ICD_FILENAMES=$LAVAPIPE_ICD",
+    "VK_DRIVER_FILES=$LAVAPIPE_ICD",
 )
 
 /**

@@ -34,13 +34,13 @@ class GpuTest {
         assertEquals(GpuKind.MALI, gpuKind(hasMali = true, hasKgsl = true, kgslModel = "Adreno 740"))
     }
 
-    @Test fun softwareEnvDoesNotNameARealDriver() {
+    @Test fun softwareEnvNamesOnlyLavapipe() {
         val icds = listOf(GpuDrivers.of(GpuKind.MALI).icdPath, GpuDrivers.of(GpuKind.TURNIP).icdPath)
         assertEquals(
             listOf(
                 "LIBGL_ALWAYS_SOFTWARE=1",
-                "VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/omalauncher-software.json",
-                "VK_DRIVER_FILES=/usr/local/share/vulkan/icd.d/omalauncher-software.json",
+                "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json",
+                "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json",
             ),
             SOFTWARE_ENV,
         )
