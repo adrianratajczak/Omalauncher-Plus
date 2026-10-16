@@ -44,9 +44,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.omalauncher.linux.Agent
 import dev.omalauncher.widgets.Market
@@ -293,6 +296,9 @@ private const val NEW = "new"
 private const val OTHER = "other"
 private const val INSTALLED = "installed"
 
+private val CardIconSize = 32.dp
+private val DetailIconSize = 48.dp
+
 @Composable
 private fun Caption(text: String) = BasicText(text, style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
 
@@ -350,6 +356,19 @@ private fun rememberPreview(
     return preview
 }
 
+/** [e]'s icon, as the drawer draws it, or null while it loads or when it has none. */
+@Composable
+private fun rememberIcon(
+    market: Market,
+    e: CatalogEntry,
+    size: Dp,
+): ImageBitmap? {
+    val px = with(LocalDensity.current) { size.roundToPx() }
+    val accent = Palette.accent.toArgb()
+    val icon by produceState<ImageBitmap?>(null, e.icon, e.iconFile, px, accent) { value = market.icon(e, px, accent) }
+    return icon
+}
+
 /** A grid cell: the preview, the name, and whether it's installed; [selected] while its page shows beside the grid. */
 @Composable
 private fun Card(
@@ -381,10 +400,6 @@ private fun Card(
                 }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            BasicText(e.name, Modifier.weight(1f, fill = false), style = Mono.copy(fontSize = TextSize.Body), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (e.new) NewBadge()
-        }
         val (status, color) =
             when {
                 busy != null -> busy to Palette.accent
@@ -394,7 +409,20 @@ private fun Card(
                 !linux && e.needsLinux -> "needs linux" to Palette.muted
                 else -> "${e.category ?: OTHER}${e.size?.let { " · ${it.first}x${it.second}" } ?: ""}" to Palette.muted
             }
-        BasicText(status, style = Mono.copy(color = color, fontSize = TextSize.Small), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // An app's icon goes before its name and status, as in the drawer; widgets have none.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (e.icon != null || e.iconFile != null) {
+                val icon = rememberIcon(market, e, CardIconSize)
+                Box(Modifier.size(CardIconSize)) { icon?.let { Image(it, null, Modifier.fillMaxSize()) } }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BasicText(e.name, Modifier.weight(1f, fill = false), style = Mono.copy(fontSize = TextSize.Body), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (e.new) NewBadge()
+                }
+                BasicText(status, style = Mono.copy(color = color, fontSize = TextSize.Small), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
 
@@ -447,12 +475,20 @@ private fun Detail(
             }
         }
         Spacer(Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BasicText(e.name, Modifier.weight(1f, fill = false), style = Mono.copy(fontSize = TextSize.Title))
-            if (e.new) NewBadge()
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (e.icon != null || e.iconFile != null) {
+                val icon = rememberIcon(market, e, DetailIconSize)
+                Box(Modifier.size(DetailIconSize)) { icon?.let { Image(it, null, Modifier.fillMaxSize()) } }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BasicText(e.name, Modifier.weight(1f, fill = false), style = Mono.copy(fontSize = TextSize.Title))
+                    if (e.new) NewBadge()
+                }
+                val size = e.size?.let { " · ${it.first}x${it.second}" } ?: ""
+                BasicText("${e.category ?: OTHER} · ${e.author} · v${e.version} · ${e.license}$size", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
+            }
         }
-        val size = e.size?.let { " · ${it.first}x${it.second}" } ?: ""
-        BasicText("${e.category ?: OTHER} · ${e.author} · v${e.version} · ${e.license}$size", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
         BasicText(e.description, style = Mono.copy(fontSize = TextSize.Body))
         Spacer(Modifier.height(4.dp))
         when {

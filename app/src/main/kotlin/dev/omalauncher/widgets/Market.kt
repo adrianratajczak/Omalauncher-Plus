@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import dev.omalauncher.httpGet
+import dev.omalauncher.ui.decodeImageIcon
+import dev.omalauncher.ui.decodeSvgIcon
 import dev.omalauncher.upgrade.Versioned
 import dev.omalauncher.upgrade.mapEntries
 import dev.omalauncher.upgrade.writeAtomically
@@ -59,6 +61,7 @@ class Market(
     val busy = mutableStateMapOf<String, String>()
     val installed = mutableStateMapOf<String, Installed>()
     private val previews = HashMap<String, ImageBitmap?>()
+    private val icons = HashMap<Pair<String, Int>, ImageBitmap?>()
     private val catalog = if (kind == OwlKind.App) "apps.json" else "index.json"
 
     /** Each kind keeps its own records: an app and a widget may share an id. */
@@ -125,6 +128,27 @@ class Market(
                 runCatching { httpGet(BASE + path).let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }.getOrNull()
             }
         synchronized(previews) { previews[path] = img }
+        return img
+    }
+
+    /**
+     * [e]'s icon at [size] px square, as the drawer draws it: an SVG with `currentColor` in [accent], an image as it is;
+     * null when it has none.
+     */
+    suspend fun icon(
+        e: CatalogEntry,
+        size: Int,
+        accent: Int,
+    ): ImageBitmap? {
+        val key = (e.icon ?: e.iconFile ?: return null) to (if (e.icon != null) accent else 0)
+        synchronized(icons) { if (key in icons) return icons[key] }
+        val img =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    if (e.icon != null) decodeSvgIcon(e.icon!!, size, accent) else decodeImageIcon(httpGet(BASE + e.iconFile), size)
+                }.getOrNull()?.asImageBitmap()
+            }
+        synchronized(icons) { icons[key] = img }
         return img
     }
 

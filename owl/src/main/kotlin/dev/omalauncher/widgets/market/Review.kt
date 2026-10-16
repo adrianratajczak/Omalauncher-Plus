@@ -99,6 +99,7 @@ class Review(
     fun entry(
         preview: String?,
         themePreviews: Map<String, String> = emptyMap(),
+        iconFile: String? = null,
     ): CatalogEntry {
         val p = program!!
         return CatalogEntry(
@@ -117,6 +118,8 @@ class Review(
             owl = p.level,
             category = Catalog.metaText(p.meta["category"]),
             themePreviews = themePreviews,
+            icon = p.icon,
+            iconFile = iconFile,
         )
     }
 

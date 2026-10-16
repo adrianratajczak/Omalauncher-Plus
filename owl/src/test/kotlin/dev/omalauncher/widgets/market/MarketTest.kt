@@ -197,6 +197,17 @@ class MarketTest {
         assertFalse(old.new)
     }
 
+    @Test fun appIconsRoundTripAndWidgetsHaveNone() {
+        val svg = "<svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"9\" fill=\"currentColor\"/></svg>"
+        val app = "app \"notes\" {\n  meta { owl: 8; description: \"notes\"; version: \"1.0\"; license: \"MIT\" }\n  icon: \"\"\"$svg\"\"\"\n  Text { text: \"x\" }\n}"
+        val e = Review("apps/simon/notes/app.owl", app).entry(null)
+        assertEquals(svg, e.icon)
+        val parsed = Catalog.parse(Catalog.write(listOf(e.copy(iconFile = "apps/simon/notes/store-icon.png")), "now", "apps"), "apps").single()
+        assertEquals(svg, parsed.icon)
+        assertEquals("apps/simon/notes/store-icon.png", parsed.iconFile)
+        assertEquals(null, Review("widgets/simon/disk/widget.owl", good).entry(null).icon)
+    }
+
     @Test fun aNewerCatalogFormatAsksForAnUpdate() {
         val e = assertThrows(WidgetError::class.java) { Catalog.parse("{\"format\": ${Catalog.FORMAT + 1}, \"widgets\": []}") }
         assertTrue(e.message!!.contains("newer launcher"))

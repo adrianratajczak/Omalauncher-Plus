@@ -43,6 +43,10 @@ data class CatalogEntry(
     val added: String? = null,
     /** Added in the last [Catalog.NEW_DAYS] days, as of the catalog's [Catalog.write]; the store publishes often enough to keep it current. */
     val new: Boolean = false,
+    /** An app's `icon:` SVG, shown beside its name in the store; null for widgets and apps without one, or with an image icon. */
+    val icon: String? = null,
+    /** Path of an app's image icon (its `icon:` asset) relative to the catalog, written out by the store's CI. */
+    val iconFile: String? = null,
 ) {
     /** The preview drawn in [theme], or the default one. */
     fun previewFor(theme: String?) = themePreviews[theme] ?: preview
@@ -115,6 +119,8 @@ object Catalog {
             themePreviews = (f["themes"] as? Obj)?.fields.orEmpty().mapNotNull { (k, v) -> (v as? Str)?.v?.let { k to it } }.toMap(),
             added = s("added"),
             new = (f["new"] as? Bool)?.v == true,
+            icon = s("icon"),
+            iconFile = s("iconFile"),
         )
     }
 
@@ -168,6 +174,8 @@ object Catalog {
             }
             e.added?.let { sb.append(",\n      \"added\": ${q(it)}") }
             if (e.new) sb.append(",\n      \"new\": true")
+            e.icon?.let { sb.append(",\n      \"icon\": ${q(it)}") }
+            e.iconFile?.let { sb.append(",\n      \"iconFile\": ${q(it)}") }
             sb.append("\n    }")
         }
         sb.append("\n  ]\n}\n")
