@@ -387,12 +387,14 @@ class WidgetInstance(
         scope.launch {
             val r = services.http(url, sent, POST_TIMEOUT_S, bytes)
             val ok = r.code in 200..299
-            if (!ok) report("post: ${if (r.code > 0) "HTTP ${r.code}" else "request failed"}: ${r.err}")
+            // `x = post(...)` gets the answer and handles it (a sign-in polled while pending is a 400 each time).
+            if (!ok && slot == null) report("post: ${if (r.code > 0) "HTTP ${r.code}" else "request failed"}: ${r.err}")
             if (slot != null) {
                 write(slot, Obj(mapOf("code" to Num(r.code.toDouble()), "ok" to if (ok) TRUE else FALSE, "out" to if (r.out.isEmpty()) Null else Json.parseOrText(r.out))))
             }
-            // Like after any action: what it changed shows in this widget's sources.
-            refresh()
+            // What it changed shows in this widget's sources. A refusal changed nothing: a sign-in polled
+            // until it's approved mustn't fetch everything again each time.
+            if (ok) refresh()
         }
     }
 

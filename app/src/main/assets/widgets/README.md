@@ -270,7 +270,7 @@ the widget that ran it refreshes its sources; other widgets keep their own inter
 | `androidApp("org.pkg")` | opens an Android app by package name, or by an `android.apps` key to open that copy in a work profile or clone |
 | `copy(text)` | copies text to the Android clipboard |
 | `notify("title", "text")` | posts an Android notification (if the launcher may post them) |
-| `post("https://...", body, headers)` | sends an HTTP POST from Android: a map or list `body` goes as JSON, text as it is; `headers` is a map like `http(...)`'s. `x = post(...)` puts the answer into the state `x` when it arrives: `{code, ok, out}`, with `out` parsed when it's JSON. Never retried; a null URL sends nothing. See Sending (owl 8) |
+| `post("https://...", body, headers)` | sends an HTTP POST from Android: a map or list `body` goes as JSON, text as it is; `headers` is a map like `http(...)`'s. `x = post(...)` puts the answer into the state `x` when it arrives: `{code, ok, out}`, with `out` parsed when it's JSON. Never retried; a null URL sends nothing. When it succeeds, the widget's sources run again. See Sending (owl 8) |
 | `url("https://...")` | opens in the Android browser. Other links open in the app that takes them: `tel:` the dialer, `geo:` maps, `mailto:` email |
 | `share(text)` | opens Android's share sheet with the text (owl 7) |
 | `haptic()` | a short tap of haptic feedback, if the user has touch feedback on (owl 7) |
@@ -306,7 +306,7 @@ built entirely from values is flagged. Plain `http://` isn't loaded.
 
 `http(...)` sources only read. For the rest of a web API (signing in, saving a change) a handler sends a
 POST with `post(url, body, headers)` (owl 8). It goes out from Android, so it needs no Linux, once per
-tap, and the widget's sources run again when the answer is in, so what changed shows:
+tap. When the server accepts it (a 2xx answer), the widget's sources run again, so what changed shows:
 
 ```owl
 app "todo" {
