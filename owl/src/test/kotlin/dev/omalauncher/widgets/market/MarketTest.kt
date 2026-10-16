@@ -208,6 +208,16 @@ class MarketTest {
         assertEquals(null, Review("widgets/simon/disk/widget.owl", good).entry(null).icon)
     }
 
+    @Test fun screensRoundTripAndFallBackToTheDefaultTheme() {
+        val screens = mapOf("nord" to listOf("apps/a/b/screens/2/nord.webp", "apps/a/b/screens/3/nord.webp"), Catalog.DEFAULT_THEME to listOf("apps/a/b/screens/2/${Catalog.DEFAULT_THEME}.webp"))
+        val e = Review("widgets/simon/disk/widget.owl", good).entry(null).copy(screens = screens)
+        val parsed = Catalog.parse(Catalog.write(listOf(e), "now")).single()
+        assertEquals(screens, parsed.screens)
+        assertEquals(screens["nord"], parsed.screensFor("nord"))
+        assertEquals(screens[Catalog.DEFAULT_THEME], parsed.screensFor("my-own-theme"))
+        assertTrue(Review("widgets/simon/disk/widget.owl", good).entry(null).screensFor("nord").isEmpty())
+    }
+
     @Test fun aNewerCatalogFormatAsksForAnUpdate() {
         val e = assertThrows(WidgetError::class.java) { Catalog.parse("{\"format\": ${Catalog.FORMAT + 1}, \"widgets\": []}") }
         assertTrue(e.message!!.contains("newer launcher"))

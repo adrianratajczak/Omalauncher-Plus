@@ -2,6 +2,7 @@ package dev.omalauncher.widgets
 
 import android.content.Context
 import android.os.FileObserver
+import android.util.Log
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -376,8 +377,10 @@ class WidgetEngine(
                         path: String?,
                     ) {
                         if (path != null && path.endsWith(".themes") && BuildConfig.DEBUG) {
-                            File(checkDir, path).delete()
-                            scope.launch { previewThemes(path.removeSuffix(".themes")) }
+                            val file = File(checkDir, path)
+                            val screens = runCatching { file.readLines() }.getOrDefault(emptyList()).map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }
+                            file.delete()
+                            scope.launch { previewThemes(path.removeSuffix(".themes"), screens) }
                             return
                         }
                         if (path == null || !path.endsWith(".want")) return
@@ -592,8 +595,15 @@ class WidgetEngine(
      * [name]'s sources have loaded, renders its tile in every bundled Omarchy theme to
      * .preview/themes/<theme>/<file>.png (an app: its view at the phone's size), then writes .preview/themes/<file>.done. Asked for by
      * writing .check/<file>.themes. The whole launcher takes each theme's colors while it runs.
+     *
+     * An app can be shown on several [screens], one per line of the .themes file: the states to set before it's drawn,
+     * as `view = "watch"; openId = ""`, in order; `wait = 60` pauses that many seconds there. Each starts from the screen
+     * before it. The first is <file>.png, the rest <file>.<n>.png.
      */
-    private suspend fun previewThemes(name: String) {
+    private suspend fun previewThemes(
+        name: String,
+        screens: List<String> = emptyList(),
+    ) {
         val spec = specs.firstOrNull { it.file.name == name } ?: return
         val inst = instance(spec) ?: return
         val cells = layout.cell(name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, GRID_COLUMNS) to h.coerceAtLeast(1) } ?: (3 to 3)
@@ -606,13 +616,30 @@ class WidgetEngine(
             val loaded: suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
             withTimeoutOrNull(30_000) { loaded() }
             val dm = context.resources.displayMetrics
-            for (theme in themes) {
-                Palette.apply(theme.colors)
-                val out = File(dir, "${theme.name}/$name.png")
-                if (spec.kind == OwlKind.App) {
-                    previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, out, loaded)
-                } else {
-                    previews.render(spec, inst, cells, w, h, out, loaded)
+            for ((n, screen) in screens.ifEmpty { listOf("") }.withIndex()) {
+                for ((state, value) in assignments(screen)) {
+                    // wait = <seconds> pauses first, for an API that limits calls a minute.
+                    if (state == "wait") {
+                        delay((value.toDoubleOrNull() ?: 0.0).coerceIn(0.0, 300.0).times(1000).toLong())
+                        continue
+                    }
+                    inst.setState(state, Json.parseOrText(value))?.let { Log.w("widgets", "preview screen ${n + 1} of $name: $it") }
+                }
+                // What the new screen fetches starts now; give it time before the first theme is drawn.
+                if (screen.isNotEmpty()) {
+                    delay(SCREEN_SETTLE_MS)
+                    withTimeoutOrNull(30_000) { loaded() }
+                }
+                // Waited for once a screen: a source that never loads would otherwise hold up every theme.
+                val ready: suspend () -> Unit = {}
+                for (theme in themes) {
+                    Palette.apply(theme.colors)
+                    val out = File(dir, "${theme.name}/$name${if (n > 0) ".${n + 1}" else ""}.png")
+                    if (spec.kind == OwlKind.App) {
+                        previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, out, ready)
+                    } else {
+                        previews.render(spec, inst, cells, w, h, out, ready)
+                    }
                 }
             }
         } finally {
@@ -621,6 +648,9 @@ class WidgetEngine(
         }
         withContext(Dispatchers.IO) { File(dir, "$name.done").writeText("${cells.first}x${cells.second} ${w}x$h\n") }
     }
+
+    /** A preview screen's `name = value; name = value` pairs; a value is JSON (a quoted string, a number, true) or plain text. */
+    private fun assignments(screen: String) = SCREEN_STATE.findAll(screen).map { it.groupValues[1] to it.groupValues[2].trim() }.toList()
 
     private fun isLive(spec: WidgetSpec): Boolean {
         if (!missing[spec.file.name].isNullOrEmpty()) return false
@@ -815,6 +845,12 @@ class WidgetEngine(
             }
 
     companion object {
+        /** A store preview screen's `name = value`, up to the next `;` outside quotes. */
+        private val SCREEN_STATE = Regex("""(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|[^;]+)""")
+
+        /** How long a store preview screen gets to fetch what it shows before its sources count as loaded. */
+        private const val SCREEN_SETTLE_MS = 3_000L
+
         /** The default terminal tile, which [addTerminalWidget] copies. */
         private const val TERMINAL_ASSET = "45-terminal.owl"
         private const val TERMINAL_PREFIX = "terminal-"

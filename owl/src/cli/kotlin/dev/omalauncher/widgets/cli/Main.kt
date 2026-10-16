@@ -130,8 +130,13 @@ private fun index(args: List<String>): Int {
                     val ext = imageExtension(bytes) ?: return@let null
                     File(f.parentFile, "store-icon.$ext").apply { writeBytes(bytes) }.relativeTo(repo).invariantSeparatorsPath
                 }
+            // screens/<n>/<omarchy theme>.webp: an app's other screens, from 2 on, in each theme.
+            val screens =
+                File(f.parentFile, "screens").listFiles { d -> d.isDirectory && d.name.toIntOrNull() != null }.orEmpty().sortedBy { it.name.toInt() }
+                    .flatMap { d -> d.listFiles { p -> p.extension in setOf("webp", "png") }.orEmpty().map { it.nameWithoutExtension to it.relativeTo(repo).invariantSeparatorsPath } }
+                    .groupBy({ it.first }, { it.second }).toSortedMap()
             val added = firstCommit(repo, path)
-            r.entry(preview, themes, iconFile).copy(added = added, new = Catalog.isNew(added, today))
+            r.entry(preview, themes, iconFile).copy(screens = screens).copy(added = added, new = Catalog.isNew(added, today))
         }.toList()
     val order = File(repo, "order.txt").takeIf { it.exists() }?.readText().orEmpty()
     val out = if (kind == OwlKind.App) "apps.json" else "index.json"

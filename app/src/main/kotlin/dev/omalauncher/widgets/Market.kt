@@ -120,8 +120,10 @@ class Market(
     suspend fun preview(
         e: CatalogEntry,
         theme: String?,
-    ): ImageBitmap? {
-        val path = e.previewFor(theme) ?: return null
+    ): ImageBitmap? = e.previewFor(theme)?.let { image(it) }
+
+    /** A preview or screen from the store, by its path in the catalog; null when it can't be loaded. */
+    suspend fun image(path: String): ImageBitmap? {
         synchronized(previews) { if (path in previews) return previews[path] }
         val img =
             withContext(Dispatchers.IO) {

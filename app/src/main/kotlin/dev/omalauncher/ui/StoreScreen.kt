@@ -20,11 +20,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -299,6 +301,12 @@ private const val INSTALLED = "installed"
 private val CardIconSize = 32.dp
 private val DetailIconSize = 48.dp
 
+/** How tall an entry's page shows its preview and screens, so its description stays in view. */
+private val ScreenHeight = 320.dp
+
+/** Width over height of a phone screen, for an app's screens before they load. */
+private const val PHONE_RATIO = 0.45f
+
 @Composable
 private fun Caption(text: String) = BasicText(text, style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
 
@@ -435,6 +443,25 @@ private fun NewBadge() =
         style = Mono.copy(color = Palette.accent, fontSize = TextSize.Small),
     )
 
+/** An app's [preview] and its other [screens] side by side, swiped through; each one loads as it scrolls into view. */
+@Composable
+private fun Screens(
+    market: Market,
+    preview: ImageBitmap?,
+    screens: List<String>,
+) {
+    // Until one has loaded, a slot is phone-shaped.
+    val ratio = preview?.let { it.width.toFloat() / it.height } ?: PHONE_RATIO
+    val shot = Modifier.height(ScreenHeight).aspectRatio(ratio).frame(1.dp, Palette.border, radius = 8.dp).clip(RoundedCornerShape(8.dp))
+    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item(key = "preview") { Box(shot.background(Palette.surface)) { preview?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } } }
+        items(screens, key = { it }) { path ->
+            val img by produceState<ImageBitmap?>(null, path) { value = market.image(path) }
+            Box(shot.background(Palette.surface)) { img?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } }
+        }
+    }
+}
+
 /** A widget's or app's page: a large preview, what it is, what it installs and runs, and the button that adds it. */
 @Composable
 private fun Detail(
@@ -466,12 +493,17 @@ private fun Detail(
                 BasicText(if (market.kind == OwlKind.App) "all apps" else "all widgets", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
             }
         }
-        preview?.let {
-            // As wide as the panel, but no taller than 320 dp, so a tall widget doesn't push its description off screen:
-            // narrowing the width keeps the image inside its slot instead of drawing over the text below.
-            val ratio = it.width.toFloat() / it.height
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Image(it, null, Modifier.widthIn(max = 320.dp * ratio).fillMaxWidth().aspectRatio(ratio), contentScale = ContentScale.Fit)
+        val screens = e.screensFor(theme)
+        if (screens.isNotEmpty()) {
+            Screens(market, preview, screens)
+        } else {
+            preview?.let {
+                // As wide as the panel, but no taller than 320 dp, so a tall widget doesn't push its description off screen:
+                // narrowing the width keeps the image inside its slot instead of drawing over the text below.
+                val ratio = it.width.toFloat() / it.height
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Image(it, null, Modifier.widthIn(max = ScreenHeight * ratio).fillMaxWidth().aspectRatio(ratio), contentScale = ContentScale.Fit)
+                }
             }
         }
         Spacer(Modifier.height(4.dp))
