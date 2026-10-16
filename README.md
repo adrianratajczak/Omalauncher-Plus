@@ -1,8 +1,8 @@
 # Omalauncher+
 
-A fork of [SimonSchubert/omalauncher](https://github.com/SimonSchubert/omalauncher),
-based on upstream **0.7.2** (versionCode 14). Everything upstream does, plus a
-few features below. It installs **side by side** with the original: applicationId
+A customized fork of [SimonSchubert/omalauncher](https://github.com/SimonSchubert/omalauncher),
+based on upstream **0.7.2** (versionCode 14). Everything upstream does, plus the
+features below. It installs **side by side** with the original: applicationId
 `dev.omalauncher.plus`, label **Omalauncher+**.
 
 Upstream PRs, each with only its feature: swipe down →
@@ -39,14 +39,41 @@ window opens as its own Android task, with its own card in Recents.
 Needs an arm64 phone with Android 10 or newer. Without Linux, the launcher still
 has the themes, wallpapers, Android apps and the widgets that don't run commands.
 
+More docs: [README.plus.en.md](README.plus.en.md) (same in
+[Polish](README.plus.pl.md)), the one-file page
+[omalauncher-plus.html](omalauncher-plus.html), and the dev inventory
+[PLUS.md](PLUS.md).
+
+## Install
+
+Grab the APK from **Releases** (`releases/omalauncher-plus-*.apk` is also
+committed here), install it and set Omalauncher+ as the default launcher.
+Release builds are signed with a debug key (no upload key in this repo) —
+fine for sideloading.
+
 ## What's new in this fork
 
-### Swipe down for notifications
+### Day & night themes
 
-Swiping down anywhere on home pulls down Android's notification shade, like
-stock launchers. Both directions are configurable in settings › gestures:
-swipe up and swipe down each open the app drawer, the notifications, or do
-nothing. The original swipe-up drawer behavior is unchanged by default.
+Settings › omalauncher+ › day & night picks a theme for the day and one for
+the night (`none` keeps whatever shows) plus the switch hours, and flips
+them automatically: on every return home and every minute while home is
+visible.
+
+### Recent apps, your way
+
+The strip above the bar can be turned off entirely (its room goes back to
+the grid), and any app can be long-pressed out of it with **hide from
+recents** — no usage history lost, and the hidden ones wait in
+omalauncher+ › drawer, one tap to bring them back.
+
+### A drawer built for the thumb
+
+Niagara-style letter rail on the right edge (drag to filter, ★ clears, the
+letter parks top-left until then) with the filtered bucket pinned to the
+bottom, repacked into full rows right above the bar. Rows can also hug the
+rail with **align apps right**. Search results grow bottom-up, best match
+first.
 
 ### Custom icon packs and icon size
 
@@ -76,10 +103,12 @@ and Tab/arrows walk apps, store, web and the agent's ask. Settings › search
 picks the web engine (Google by default, DuckDuckGo, Bing, or a custom URL with
 `{q}` for the query) and the store (Play or F-Droid).
 
-The drawer itself was rewritten for open speed (deferred keyboard, ranking off
-the main thread, memoized rows) and grew Niagara-style letter rail: ★, # and
-only the initials the apps have. Dragging it filters to the letter under the
-finger, which also sits in the top-left corner until ★ clears it.
+### Swipe down for notifications
+
+Swiping down anywhere on home pulls down Android's notification shade, like
+stock launchers. Both directions are configurable in settings › gestures:
+swipe up and swipe down each open the app drawer, the notifications, or do
+nothing. The original swipe-up drawer behavior is unchanged by default.
 
 ### Coding agent installs that work
 
@@ -92,14 +121,17 @@ a broken copy left by an earlier attempt is reinstalled from scratch.
 ### Omalauncher+ settings
 
 Settings › omalauncher+ holds this fork's own extras, away from upstream's
-rows: the icon pack and icon size screens, icon shape (system, circle,
-squircle), adaptive background on/off, grayscale, and tint (off, custom
-colors with an optional top-to-bottom duotone gradient, or the theme's
-accent, reapplied on every theme change); labels on/off for home and drawer;
-a switch hiding the Linux session notification (gone while idle, still shows
-installs and errors); a corner radius slider (theme, or 0 to 60px over the
-whole launcher); and a blurred widget background switch (per-tile frost
-sampling the wallpaper). Long-pressing home also offers settings next to the themes.
+rows, grouped as icons → day & night → home → drawer → labels → search →
+widgets → notifications → corners: the icon pack and icon size screens, icon
+shape (system, circle, squircle), adaptive background on/off, grayscale, and
+tint (off, custom colors with an optional top-to-bottom duotone gradient, or
+the theme's accent, reapplied on every theme change); the day/night switcher;
+the recent apps strip toggle; drawer row alignment plus the hidden-recents
+list; labels on/off separately for home and drawer; a switch hiding the Linux
+session notification (gone while idle, still shows installs and errors);
+a corner radius slider (theme, or 0 to 60px over the whole launcher); and a
+blurred widget background switch (per-tile frost sampling the wallpaper).
+Long-pressing home also offers settings next to the themes.
 
 ### Lockscreen (`lockscreen/`)
 
