@@ -11,7 +11,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.app.ActivityManager
-import android.content.ActivityNotFoundException
 import android.hardware.display.DisplayManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -40,6 +39,9 @@ import dev.omalauncher.linux.GuestShell
 import dev.omalauncher.linux.Proot
 import dev.omalauncher.linux.ShellPool
 import dev.omalauncher.linux.ShellResult
+import dev.omalauncher.openUrl
+import dev.omalauncher.sha256Hex
+import dev.omalauncher.upgrade.writeAtomically
 import dev.omalauncher.widgets.lang.Builtins
 import dev.omalauncher.widgets.lang.Lst
 import dev.omalauncher.widgets.lang.Null
@@ -77,7 +79,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 private const val MAX_HTTP_BYTES = 1 shl 20
@@ -370,12 +371,7 @@ class WidgetServices(
             "terminal" -> runtime.terminal("$arg; exec bash", args.getOrNull(1)?.toString() ?: arg.substringBefore(' '))
             "app" -> runtime.launch(arg)
             // Any scheme an app handles: tel:, geo:, mailto:, ... One nothing handles mustn't crash the launcher.
-            "url" ->
-                try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(arg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                } catch (e: ActivityNotFoundException) {
-                    Toast.makeText(context, "no app opens $arg", Toast.LENGTH_SHORT).show()
-                }
+            "url" -> if (!context.openUrl(arg)) Toast.makeText(context, "no app opens $arg", Toast.LENGTH_SHORT).show()
             "launcher" -> launcherAction?.invoke(arg)
             "media" -> media.control(arg)
             "volume" -> volume.control(args[0])
@@ -449,7 +445,7 @@ class WidgetServices(
         if (!url.startsWith("https://")) return null
         return fileLocks.getOrPut(url) { Mutex() }.withLock {
             withContext(Dispatchers.IO) {
-                val file = File(fileCache, MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString("") { "%02x".format(it) })
+                val file = File(fileCache, sha256Hex(url.toByteArray()))
                 val kept = file.takeIf { it.isFile }
                 if (kept != null && System.currentTimeMillis() - kept.lastModified() < FILE_FRESH_MS) return@withContext kept
                 val failed = fileFailed[url]
@@ -462,10 +458,7 @@ class WidgetServices(
                 }
                 fileFailed.remove(url)
                 runCatching {
-                    fileCache.mkdirs()
-                    val tmp = File(fileCache, file.name + ".tmp")
-                    tmp.writeBytes(bytes)
-                    tmp.renameTo(file)
+                    writeAtomically(file, bytes)
                     pruneFiles()
                     file
                 }.getOrNull()

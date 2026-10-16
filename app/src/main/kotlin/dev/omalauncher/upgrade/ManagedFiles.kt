@@ -1,9 +1,9 @@
 package dev.omalauncher.upgrade
 
 import android.util.Log
+import dev.omalauncher.sha256Hex
 import org.json.JSONObject
 import java.io.File
-import java.security.MessageDigest
 
 /** How a launcher-written file treats the copy on disk. */
 enum class Policy {
@@ -69,7 +69,7 @@ class ManagedFiles(
             }
             try {
                 val bytes = m.content()
-                val sha = sha256(bytes)
+                val sha = sha256Hex(bytes)
                 if (current != sha) writeAtomically(m.file, bytes, m.executable)
                 next[key] = sha
             } catch (e: Exception) {
@@ -105,9 +105,7 @@ class ManagedFiles(
         /** What launchers before the manifest put in files they owned. */
         const val LEGACY_MARKER = "omalauncher managed"
 
-        fun hash(file: File): String? = if (file.isFile) sha256(file.readBytes()) else null
-
-        fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        fun hash(file: File): String? = if (file.isFile) sha256Hex(file.readBytes()) else null
     }
 }
 

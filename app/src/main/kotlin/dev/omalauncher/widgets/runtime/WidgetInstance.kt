@@ -3,6 +3,7 @@ package dev.omalauncher.widgets.runtime
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import dev.omalauncher.upgrade.writeAtomically
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.update
@@ -255,10 +256,7 @@ class WidgetInstance(
         // "v" is the format version; values are matched by name, so renamed ones start over.
         val text = "{\"v\":1,\"savedAt\":${System.currentTimeMillis() / 1000},\"values\":{" + fields.entries.joinToString(",") { (n, v) -> "${Json.write(Str(n))}:$v" } + "}}"
         runCatching {
-            file.parentFile?.mkdirs()
-            val tmp = File(file.path + ".tmp")
-            tmp.writeText(text)
-            tmp.renameTo(file)
+            writeAtomically(file, text.toByteArray())
             lastSaved = values
         }.onFailure { report("couldn't save persisted values: ${it.message}") }
     }

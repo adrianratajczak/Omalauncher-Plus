@@ -23,6 +23,7 @@ import dev.omalauncher.ui.Palette
 import dev.omalauncher.theme.StyleStore
 import dev.omalauncher.upgrade.Managed
 import dev.omalauncher.upgrade.Policy
+import dev.omalauncher.upgrade.writeAtomically
 import dev.omalauncher.widgets.lang.CompileError
 import dev.omalauncher.widgets.lang.Compiler
 import dev.omalauncher.widgets.lang.Json
@@ -502,11 +503,7 @@ class WidgetEngine(
                 else -> "error: unknown command '${parts.getOrNull(1).orEmpty()}'"
             }
         withContext(Dispatchers.IO) {
-            runCatching {
-                val tmp = File(inboxDir, ".$id.tmp")
-                tmp.writeText(reply + "\n")
-                tmp.renameTo(File(inboxDir, "$id.done"))
-            }
+            runCatching { writeAtomically(File(inboxDir, "$id.done"), (reply + "\n").toByteArray()) }
         }
     }
 
@@ -752,12 +749,7 @@ class WidgetEngine(
     ) {
         val text = "sha256 $hash\nresult $result\n" + (preview?.let { "$it\n" } ?: "")
         scope.launch(errorWriter) {
-            runCatching {
-                checkDir.mkdirs()
-                val tmp = File(checkDir, ".${file.name}.tmp")
-                tmp.writeText(text)
-                tmp.renameTo(File(checkDir, "${file.name}.txt"))
-            }
+            runCatching { writeAtomically(File(checkDir, "${file.name}.txt"), text.toByteArray()) }
         }
     }
 

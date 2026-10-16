@@ -1,7 +1,5 @@
 package dev.omalauncher.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.omalauncher.BuildConfig
+import dev.omalauncher.openUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -203,8 +202,7 @@ private fun Details(c: Component) {
         if (c.license == "lgpl-3.0") value = withContext(Dispatchers.IO) { context.assets.open("licenses/gpl-3.0.txt").bufferedReader().use { it.readText() } }
     }
     val small = Mono.copy(fontSize = TextSize.Small)
-    // runCatching: there may be no browser.
-    val open = remember(context) { { url: String -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }; Unit } }
+    val open = remember(context) { { url: String -> context.openUrl(url); Unit } }
     Spacer(Modifier.height(10.dp))
     BasicText(c.notice, style = small)
     Spacer(Modifier.height(10.dp))

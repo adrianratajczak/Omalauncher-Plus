@@ -46,6 +46,7 @@ import com.google.zxing.common.BitMatrix
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import dev.omalauncher.BuildConfig
+import dev.omalauncher.openUrl
 import dev.omalauncher.widgets.Market
 import dev.omalauncher.widgets.WidgetSpec
 import dev.omalauncher.widgets.lang.OwlKind
@@ -259,7 +260,7 @@ private fun StoreIssue(
             runCatching { withContext(Dispatchers.IO) { Paste.upload(text, userAgent(), Paste.STORE_DAYS) } }
                 .onSuccess { id ->
                     val url = Submit.issueUrl(Market.REPO, spec.name, Catalog.metaText(spec.program?.meta?.get("description")).orEmpty(), id, spec.kind)
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    if (!context.openUrl(url)) error = "no browser to open $url"
                 }.onFailure { error = (it as? ShareError)?.message ?: "something went wrong" }
             uploading = false
         }

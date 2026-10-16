@@ -4,6 +4,8 @@ import android.content.Context
 import android.system.Os
 import android.util.Log
 import dev.omalauncher.LauncherData
+import dev.omalauncher.httpGet
+import dev.omalauncher.sha256Hex
 import dev.omalauncher.upgrade.Provisioner
 import dev.omalauncher.upgrade.StepJournal
 import dev.omalauncher.upgrade.writeAtomically
@@ -43,6 +45,7 @@ private val PACKAGES =
 /** Omarchy's Winamp-style player; not in Arch's ARM repos, but upstream ships an arm64 build. */
 private const val CLIAMP_VERSION = "v2.3.0"
 private const val CLIAMP_URL = "https://github.com/bjarneo/cliamp/releases/download/$CLIAMP_VERSION/cliamp-linux-arm64"
+private const val CLIAMP_SHA256 = "827b4aa879feecab33ea621dc1460c60ffa765c210b5046d679ce5a4073d2b32"
 
 private val MIRRORS =
     listOf(
@@ -427,7 +430,7 @@ class Bootstrap(
         }
         // Only a complete download is kept for a retry.
         check(total <= 0 || partial.length() == total) { "the download was cut short; retry to continue it" }
-        partial.renameTo(target)
+        check(partial.renameTo(target)) { "can't move the download into place" }
         validator.delete()
         return target
     }
@@ -510,7 +513,9 @@ class Bootstrap(
     }
 
     private fun installCliamp() {
-        val bytes = URL(CLIAMP_URL).openStream().use { it.readBytes() }
+        // Runs under pacman's lock, so a stalled download must time out rather than hold it.
+        val bytes = httpGet(CLIAMP_URL)
+        check(sha256Hex(bytes) == CLIAMP_SHA256) { "cliamp download doesn't match $CLIAMP_VERSION" }
         writeAtomically(File(proot.rootfs, "usr/local/bin/cliamp"), bytes, executable = true)
     }
 

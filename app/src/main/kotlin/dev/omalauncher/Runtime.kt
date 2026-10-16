@@ -105,7 +105,7 @@ class Runtime(
     val pacman = Pacman(context, proot)
     val widgets = WidgetEngine(context, proot, this)
     val updates = SystemUpdates(proot, pacman, agents)
-    val gpu = Gpu(context, proot)
+    val gpu = Gpu(context, proot, pacman)
 
     /** The launcher's own provided files (default widgets, their docs); see [Provisioner]. */
     private val launcherFiles = Provisioner(proot.filesDir, LauncherData.LAUNCHER_MANIFEST, listOf(widgets::managed, style::managed))

@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.omalauncher.readUpTo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
@@ -29,6 +30,7 @@ import java.nio.file.LinkOption
 class Gpu(
     private val context: Context,
     private val proot: Proot,
+    private val pacman: Pacman,
 ) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
 
@@ -111,7 +113,9 @@ class Gpu(
         wanted = true
         stageMesaBundle()
         val script = GpuDrivers.installScript(driver) + " && " + GpuDrivers.probeScript(driver)
-        if (run("installing", script)) {
+        // The install script runs pacman.
+        state = JobState.Working("waiting", emptyList())
+        if (pacman.lock.withLock { run("installing", script) }) {
             activate(driver)
         } else {
             // Nothing to come back to on the next start; the failure stays on screen.
