@@ -95,6 +95,8 @@ class MainActivity : ComponentActivity() {
         runtime.androidApps.checkShortcutAccess()
         // A pack installed or removed while away, or a new version of the one chosen: its icons are drawn again.
         runtime.reloadIconPacks()
+        // Day/night auto-switching may owe a theme after the hours passed by.
+        runtime.syncDayNight()
         // The user may have set or replaced the wallpaper while we were in the background.
         lifecycleScope.launch { runtime.themes.refreshLiveWallpaper() }
     }

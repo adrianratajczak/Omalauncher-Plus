@@ -66,6 +66,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -167,6 +168,7 @@ class Runtime(
             snapshotFlow { style.style[Style.TERMINAL_FONT] to style.style[Style.TERMINAL_TEXT] }.drop(1).collect { terminalFont.write() }
         }
         androidApps.start()
+        startDayNight()
         // Omarchy's Super bindings inside Linux windows; the home screen handles its own (see MainActivity).
         keyboard.onShortcut = { code ->
             when (code) {
@@ -432,6 +434,34 @@ class Runtime(
     fun screenStopped() {
         screens = (screens - 1).coerceAtLeast(0)
         if (screens == 0) proot.procShim.setActive(false)
+    }
+
+    /**
+     * Applies the day/night theme when auto-switching wants another one
+     * showing; a no-op when auto is off, that half keeps its theme, or it
+     * already shows. A theme not downloaded yet applies its bundled colors
+     * and fetches the rest, like picking it by hand.
+     */
+    fun syncDayNight() {
+        scope.launch {
+            val want = PlusPrefs.wantedTheme() ?: return@launch
+            if (themes.picked == want) return@launch
+            themes.themes.firstOrNull { it.name == want }?.let { themes.apply(it) }
+                ?: themes.bundled.firstOrNull { it.name == want }?.let {
+                    themes.pick(it)
+                    themes.prefetch(want)
+                }
+        }
+    }
+
+    /** While home shows, re-checks the day/night theme every minute, so a switch hour applies mid-use. */
+    fun startDayNight() {
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                if (screens > 0) syncDayNight()
+            }
+        }
     }
 
     /** Rescans .desktop entries; the list only changes (and recomposes) when entries do. */

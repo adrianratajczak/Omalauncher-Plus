@@ -67,6 +67,26 @@ object PlusPrefs {
     var recentHidden: Set<String> by mutableStateOf(emptySet())
         private set
 
+    /** Switches the day and night themes at the set hours. */
+    var dayNightAuto by mutableStateOf(false)
+        private set
+
+    /** The day half's theme; null keeps whatever shows. */
+    var dayTheme: String? by mutableStateOf(null)
+        private set
+
+    /** The night half's theme; null keeps whatever shows. */
+    var nightTheme: String? by mutableStateOf(null)
+        private set
+
+    /** The hour the day theme takes over (0-23). */
+    var dayHour by mutableStateOf(7)
+        private set
+
+    /** The hour the night theme takes over (0-23). */
+    var nightHour by mutableStateOf(19)
+        private set
+
     /** Reads the saved Plus settings; called once when the launcher starts. */
     fun load(context: Context) {
         val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
@@ -91,6 +111,11 @@ object PlusPrefs {
         drawerAlignRight = prefs.getBoolean(DRAWER_ALIGN_RIGHT, false)
         showRecents = prefs.getBoolean(SHOW_RECENTS, true)
         recentHidden = prefs.getStringSet(RECENT_HIDDEN, emptySet()).orEmpty().toSet()
+        dayNightAuto = prefs.getBoolean(DAY_NIGHT_AUTO, false)
+        dayTheme = prefs.getString(DAY_THEME, null)
+        nightTheme = prefs.getString(NIGHT_THEME, null)
+        dayHour = prefs.getInt(DAY_HOUR, 7).coerceIn(0, 23)
+        nightHour = prefs.getInt(NIGHT_HOUR, 19).coerceIn(0, 23)
         // An earlier Plus saved a scale (0 theme-edge .. 2 full); a scale step is 16px of radius.
         val saved = prefs.getFloat(CORNERS, -1f)
         cornerPx = if (saved < 0f) null else (if (saved <= 2f) saved * 16f else saved).coerceIn(0f, 60f)
@@ -238,6 +263,60 @@ object PlusPrefs {
         context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putStringSet(RECENT_HIDDEN, recentHidden).apply()
     }
 
+    /** Whether [hour] falls in the day half; wraps past midnight when night starts before day. */
+    fun isDayHour(hour: Int): Boolean = if (dayHour <= nightHour) hour in dayHour until nightHour else hour >= dayHour || hour < nightHour
+
+    /** The theme this half of the day wants, or null when auto is off or it keeps whatever shows. */
+    fun wantedTheme(hour: Int = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)): String? {
+        if (!dayNightAuto) return null
+        return if (isDayHour(hour)) dayTheme else nightTheme
+    }
+
+    /** Switches day/night themes at the set hours and saves it. */
+    fun setDayNightAuto(
+        context: Context,
+        auto: Boolean,
+    ) {
+        dayNightAuto = auto
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(DAY_NIGHT_AUTO, auto).apply()
+    }
+
+    /** Picks the day half's theme (null keeps whatever shows) and saves it. */
+    fun setDayTheme(
+        context: Context,
+        name: String?,
+    ) {
+        dayTheme = name
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().apply { if (name == null) remove(DAY_THEME) else putString(DAY_THEME, name) }.apply()
+    }
+
+    /** Picks the night half's theme (null keeps whatever shows) and saves it. */
+    fun setNightTheme(
+        context: Context,
+        name: String?,
+    ) {
+        nightTheme = name
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().apply { if (name == null) remove(NIGHT_THEME) else putString(NIGHT_THEME, name) }.apply()
+    }
+
+    /** Sets the hour the day theme takes over and saves it. */
+    fun setDayHour(
+        context: Context,
+        hour: Int,
+    ) {
+        dayHour = hour.coerceIn(0, 23)
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putInt(DAY_HOUR, dayHour).apply()
+    }
+
+    /** Sets the hour the night theme takes over and saves it. */
+    fun setNightHour(
+        context: Context,
+        hour: Int,
+    ) {
+        nightHour = hour.coerceIn(0, 23)
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putInt(NIGHT_HOUR, nightHour).apply()
+    }
+
     private const val HIDE_LINUX = "plus_hide_linux_notification"
     private const val CORNERS = "plus_corners"
     private const val HIDE_LABELS = "plus_hide_labels"
@@ -253,4 +332,9 @@ object PlusPrefs {
     private const val DRAWER_ALIGN_RIGHT = "plus_drawer_align_right"
     private const val SHOW_RECENTS = "plus_show_recents"
     private const val RECENT_HIDDEN = "plus_recent_hidden"
+    private const val DAY_NIGHT_AUTO = "plus_day_night_auto"
+    private const val DAY_THEME = "plus_day_theme"
+    private const val NIGHT_THEME = "plus_night_theme"
+    private const val DAY_HOUR = "plus_day_hour"
+    private const val NIGHT_HOUR = "plus_night_hour"
 }

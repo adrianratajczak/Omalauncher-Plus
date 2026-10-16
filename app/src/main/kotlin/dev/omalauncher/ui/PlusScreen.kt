@@ -38,11 +38,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.omalauncher.Runtime
+import dev.omalauncher.theme.BundledTheme
 
 /**
  * Omalauncher+'s own settings, in one place so they never collide with
- * upstream's: icons, home, drawer, labels, search, widgets, notifications,
- * and corners.
+ * upstream's: icons, day & night, home, drawer, labels, search, widgets,
+ * notifications, and corners.
  */
 @Composable
 fun PlusScreen(
@@ -168,6 +169,66 @@ fun PlusScreen(
                         )
                         TintRow(bottom, { PlusPrefs.setIconTintBottom(context, it); runtime.redrawAllIcons() })
                     }
+                }
+            }
+            item(key = "daynight-label") {
+                SectionLabel("day & night", Modifier.padding(start = 8.dp, top = 6.dp))
+            }
+            item(key = "daynight-auto") {
+                PlusSwitch(
+                    title = "automatic themes",
+                    subtitle = "switches day/night themes at the set hours · auto wins while on",
+                    on = PlusPrefs.dayNightAuto,
+                    onToggle = {
+                        PlusPrefs.setDayNightAuto(context, !PlusPrefs.dayNightAuto)
+                        runtime.syncDayNight()
+                    },
+                )
+            }
+            if (PlusPrefs.dayNightAuto) {
+                item(key = "daynight-day") {
+                    ThemePicker(
+                        title = "day theme",
+                        subtitle = "none keeps whatever shows",
+                        selected = PlusPrefs.dayTheme,
+                        choices = runtime.themes.choices,
+                        onPick = {
+                            PlusPrefs.setDayTheme(context, it)
+                            runtime.syncDayNight()
+                        },
+                    )
+                }
+                item(key = "daynight-day-hour") {
+                    HourPicker(
+                        title = "day starts",
+                        selected = PlusPrefs.dayHour,
+                        onPick = {
+                            PlusPrefs.setDayHour(context, it)
+                            runtime.syncDayNight()
+                        },
+                    )
+                }
+                item(key = "daynight-night") {
+                    ThemePicker(
+                        title = "night theme",
+                        subtitle = "none keeps whatever shows",
+                        selected = PlusPrefs.nightTheme,
+                        choices = runtime.themes.choices,
+                        onPick = {
+                            PlusPrefs.setNightTheme(context, it)
+                            runtime.syncDayNight()
+                        },
+                    )
+                }
+                item(key = "daynight-night-hour") {
+                    HourPicker(
+                        title = "night starts",
+                        selected = PlusPrefs.nightHour,
+                        onPick = {
+                            PlusPrefs.setNightHour(context, it)
+                            runtime.syncDayNight()
+                        },
+                    )
                 }
             }
             item(key = "home-label") {
@@ -379,6 +440,87 @@ private val TintColors =
         Color(0xFFE91E63),
         Color(0xFFFFFFFF),
     )
+
+/** One theme picker: none, then every installed theme. */
+@Composable
+private fun ThemePicker(
+    title: String,
+    subtitle: String,
+    selected: String?,
+    choices: List<BundledTheme>,
+    onPick: (String?) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(LauncherStyle.shape(12.dp))
+            .background(Palette.surface)
+            .padding(14.dp),
+    ) {
+        BasicText(title, style = Mono.copy(fontSize = TextSize.Item))
+        BasicText(subtitle, style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
+        Box(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState())) {
+            Row(Modifier.frame(1.dp, Palette.border, radius = 12.dp)) {
+                BasicText(
+                    "none",
+                    Modifier
+                        .background(if (selected == null) Palette.accent else Color.Transparent)
+                        .clickable { onPick(null) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    style = Mono.copy(color = if (selected == null) Palette.background else Palette.foreground),
+                    softWrap = false,
+                )
+                choices.forEach { choice ->
+                    val active = choice.name == selected
+                    BasicText(
+                        choice.title,
+                        Modifier
+                            .background(if (active) Palette.accent else Color.Transparent)
+                            .clickable { onPick(choice.name) }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        style = Mono.copy(color = if (active) Palette.background else Palette.foreground),
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One hour picker: 0 to 23 as o'clock chips. */
+@Composable
+private fun HourPicker(
+    title: String,
+    selected: Int,
+    onPick: (Int) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(LauncherStyle.shape(12.dp))
+            .background(Palette.surface)
+            .padding(14.dp),
+    ) {
+        BasicText(title, style = Mono.copy(fontSize = TextSize.Item))
+        BasicText("$selected:00", style = Mono.copy(color = Palette.accent, fontSize = TextSize.Item))
+        Box(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState())) {
+            Row(Modifier.frame(1.dp, Palette.border, radius = 12.dp)) {
+                for (hour in 0..23) {
+                    val active = hour == selected
+                    BasicText(
+                        "$hour:00",
+                        Modifier
+                            .background(if (active) Palette.accent else Color.Transparent)
+                            .clickable { onPick(hour) }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        style = Mono.copy(color = if (active) Palette.background else Palette.foreground),
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
+}
 
 /** One on/off row, like the main settings' rows with a switch at the end. */
 @Composable
