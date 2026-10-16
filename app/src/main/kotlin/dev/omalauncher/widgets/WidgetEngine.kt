@@ -686,8 +686,6 @@ class WidgetEngine(
             broken(file, previous, stamp, Source(text).format(e), hash, OwlKind.of(text))
         } catch (e: RuntimeException) {
             broken(file, previous, stamp, e.toString(), hash, OwlKind.of(text))
-        } catch (e: StackOverflowError) {
-            broken(file, previous, stamp, "too deeply nested", hash, OwlKind.of(text))
         }
     }
 

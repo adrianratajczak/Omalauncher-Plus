@@ -11,7 +11,6 @@ import kotlin.math.roundToLong
 
 class Args(
     val args: List<Value>,
-    val named: Map<String, Value>,
     val host: Host?,
 ) {
     val size get() = args.size

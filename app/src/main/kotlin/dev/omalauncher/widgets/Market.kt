@@ -156,8 +156,7 @@ class Market(
 
     /** Reads the install records; call off the main thread before the store opens. */
     fun load() {
-        // Version 0 (before versioning) is the same object, unwrapped.
-        val data = Versioned.read(record.takeIf { it.exists() }?.readText(), VERSION) { _, d -> d } as? JSONObject ?: return
+        val data = Versioned.read(record.takeIf { it.exists() }?.readText(), VERSION) as? JSONObject ?: return
         installed.putAll(
             data.mapEntries { id, f ->
                 Installed(

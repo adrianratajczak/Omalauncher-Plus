@@ -14,8 +14,6 @@ class Parser private constructor(
     companion object {
         fun parse(src: String): WidgetAst = Parser(src, Lexer(src).run()).widget()
 
-        fun parseExpr(src: String): Expr = Parser(src, Lexer(src).run()).run { expr().also { expect(T.Eof) } }
-
         /** Declarations written as a block: `meta { ... }`, `requires { ... }`. */
         private val BLOCK_DECLS = setOf("meta", "requires")
 

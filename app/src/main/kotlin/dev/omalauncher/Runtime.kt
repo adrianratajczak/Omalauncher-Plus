@@ -199,7 +199,6 @@ class Runtime(
         started = true
         scope.launch {
             withContext(Dispatchers.IO) {
-                LauncherData.migrate(context)
                 launcherFiles.sync()
                 agents.load()
             }

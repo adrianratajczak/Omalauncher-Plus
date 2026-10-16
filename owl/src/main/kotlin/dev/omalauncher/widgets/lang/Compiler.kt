@@ -1221,7 +1221,7 @@ class Compiler private constructor(
         val run: (Env) -> Value = { env ->
             env.host.budget.tick()
             try {
-                impl(Args(List(args.size) { args[it](env) }, emptyMap(), env.host))
+                impl(Args(List(args.size) { args[it](env) }, env.host))
             } catch (x: WidgetError) {
                 throw x
             } catch (x: RuntimeException) {

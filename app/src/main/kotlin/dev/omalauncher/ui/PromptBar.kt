@@ -262,7 +262,7 @@ internal fun PromptBar(
                     .padding(start = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AgentPicker(runtime, onManage = { if (linux) state.show(SettingsPage.Agents) else offerLinux() })
+                DefaultAgentMenu(runtime, onManage = { if (linux) state.show(SettingsPage.Agents) else offerLinux() })
                 val shown = if (listening) speech.text else text
                 BasicTextField(
                     value = shown,
@@ -452,7 +452,7 @@ internal fun MicIcon(color: Color) {
 
 /** The agent's name at the start of the bar; tapping it lists the installed agents to send prompts to. */
 @Composable
-private fun AgentPicker(
+private fun DefaultAgentMenu(
     runtime: Runtime,
     onManage: () -> Unit,
 ) {

@@ -136,7 +136,7 @@ class Bootstrap(
     val isInstalled get() = _state.value == LinuxState.Installed
 
     /** An install was started (and may still need to finish), or one finished. */
-    val wanted get() = journal.setupComplete || choiceFile.exists() || File(proot.filesDir, "rootfs-ready").exists()
+    val wanted get() = journal.setupComplete || choiceFile.exists()
 
     /** Update steps running after the home screen is up; Idle when there are none. */
     private val _updates = MutableStateFlow<JobState>(JobState.Idle)
@@ -196,20 +196,6 @@ class Bootstrap(
     }
 
     /**
-     * Launchers before the step journal marked a finished setup with files/rootfs-ready
-     * (and the app packages with apps-vN). Such a system is set up: record what those
-     * builds did, so only newer steps run. Never let it look like a fresh install.
-     */
-    private fun adoptLegacySetup() {
-        val ready = File(proot.filesDir, "rootfs-ready")
-        if (journal.setupComplete || !ready.exists()) return
-        for (id in listOf("rootfs", "etc-1", "keyring-1", "no-kernel-1", "packages-1")) journal.mark(id)
-        if (File(proot.rootfs, "usr/local/bin/cliamp").exists()) journal.mark("cliamp-$CLIAMP_VERSION")
-        journal.completeSetup()
-        proot.filesDir.listFiles { f -> f.name == "rootfs-ready" || f.name.startsWith("apps-v") }?.forEach { it.delete() }
-    }
-
-    /**
      * Brings Linux to [LinuxState.Installed] if it's wanted: updates an
      * installed system, or continues an install that was started (also
      * after the app was killed during it). Otherwise reports NotInstalled.
@@ -217,7 +203,6 @@ class Bootstrap(
     suspend fun run() =
         withContext(Dispatchers.IO) {
             try {
-                adoptLegacySetup()
                 when {
                     journal.setupComplete -> update()
                     !choiceFile.exists() -> {
@@ -369,7 +354,7 @@ class Bootstrap(
     /** Always a fresh unpack: this step only runs until one completed, so a rootfs here is a half-unpacked one. */
     private fun installRootfs() {
         // Unpacking replaces the rootfs: the user's home, packages and agents. Only ever before a setup finished.
-        check(!journal.setupComplete && !File(proot.filesDir, "rootfs-ready").exists()) { "refusing to replace a set-up system" }
+        check(!journal.setupComplete) { "refusing to replace a set-up system" }
         val tarball = obtainTarball()
         try {
             extract(tarball)
