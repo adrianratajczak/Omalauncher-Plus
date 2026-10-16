@@ -1,19 +1,105 @@
+<div align="center">
+
 # Omalauncher+
 
-A customized fork of [SimonSchubert/omalauncher](https://github.com/SimonSchubert/omalauncher),
-based on upstream **0.7.2** (versionCode 14). Everything upstream does, plus the
-features below. It installs **side by side** with the original: applicationId
-`dev.omalauncher.plus`, label **Omalauncher+**.
+**Launcher w stylu Omarchy, na sterydach.** Fork
+[SimonSchubert/omalauncher](https://github.com/SimonSchubert/omalauncher)
+(upstream **0.7.2**) — wszystko co upstream, plus cała lista niżej.
+Instaluje się **obok** oryginału (`dev.omalauncher.plus`).
 
-Upstream PRs, each with only its feature: swipe down →
-[#119](https://github.com/SimonSchubert/omalauncher/pull/119),
-icon packs + icon size →
-[#121](https://github.com/SimonSchubert/omalauncher/pull/121).
+[![Download APK](https://img.shields.io/badge/Download-APK-7aa2f7?style=for-the-badge&logo=android)](https://github.com/adrianratajczak/Omalauncher-Plus/releases)
+[![Po polsku](https://img.shields.io/badge/Czytaj-po_polsku-9ece6a?style=for-the-badge)](README.plus.pl.md)
+[![Project page](https://img.shields.io/badge/Project-page-bb9af7?style=for-the-badge)](omalauncher-plus.html)
 
-An Android home screen with the look of [Omarchy](https://omarchy.org), and an
-optional Arch Linux ARM system next to your phone apps. Omalauncher runs the
-system under proot, without root, and is its Wayland compositor: every Linux
-window opens as its own Android task, with its own card in Recents.
+![branch](https://img.shields.io/badge/branch-omalauncher--plus-7aa2f7)
+![upstream](https://img.shields.io/badge/upstream-0.7.2-565f89)
+![android](https://img.shields.io/badge/android-10%2B-9ece6a)
+![license](https://img.shields.io/badge/license-MIT-565f89)
+
+</div>
+
+## ⬇️ Install
+
+1. Pobierz APK z [**Releases**](https://github.com/adrianratajczak/Omalauncher-Plus/releases)
+   (`omalauncher-plus-*.apk`, leży też w [`releases/`](releases/)).
+2. Zainstaluj i ustaw Omalauncher+ jako domyślny launcher.
+
+Bez roota, bez konta, bez reklam. Release podpisane kluczem debug —
+do sideloadu w zupełności wystarcza. Wymaga arm64 + Android 10+.
+
+## ✨ Co nowego w tym forku
+
+### 🌗 Motywy dzień / noc
+
+`omalauncher+ › day & night` — osobny motyw na dzień i na noc
+(`none` zostawia to co jest) plus godziny przełączenia. Zmiana sama
+przy powrocie na home i co minutę, gdy home jest widoczny.
+
+### 🕘 Ostatnie apki po Twojemu
+
+Strip nad barem można **wyłączyć w całości** (miejsce wraca do siatki),
+a każdą apkę **long-press → hide from recents** — znika od razu, historia
+użyć zostaje. Ukryte czekają w `omalauncher+ › drawer`, tap przywraca.
+
+### 👍 Drawer pod kciuk
+
+- **Letter rail jak w Niagari** — alfabet na prawej krawędzi, drag filtruje,
+  ★ czyści, litera parkuje w rogu.
+- Bucket **dokleja się do dołu**, nad bar, w pełnych rzędach bez dziur.
+- **Align apps right** przykleja wiersze do raila. Wyniki szukania rosną
+  od dołu, najlepszy tuż nad barem.
+
+### 🎨 Ikony bez limitów
+
+- **Icon packi** third-party (Nova, ADW, GO, Apex, Tesla, Fede, Motorola,
+  Sony) — mapowania, scale, warstwy iconback/mask/upon z `appfilter.xml`.
+- **Rozmiar** 0.8x / 1x / 1.25x, **kształt** system/koło/squircle,
+  **adaptive background**, **grayscale**.
+- **Tint**: off / custom / accent motywu; custom to kolor albo gradient
+  duotone top→bottom, swatche + `#rrggbb`.
+- **Labelki osobno** dla home i drawera.
+
+### 🔍 Bar, który też szuka
+
+Wiersze **search store / search web** nad barem (Enter pyta agenta);
+silnik webu (Google, DuckDuckGo, Bing, własny URL z `{q}`) i sklep
+(Play / F-Droid) do wyboru.
+
+### 👇 Swipe down = shade
+
+Swipe w dół rozwija notification shade jak w stock launcherach
+(kierunki konfigurowalne w settings › gestures).
+
+### 🔧 Instalacje agentów, które działają
+
+Agenty npm (OpenCode, Grok, Kimi) przez plain `npm install -g` po mise —
+bez wywalającego się backendu mise; postinstall przechodzi, uwalone kopie
+reinstalują się same.
+
+### ⚙️ Wszystko w jednym miejscu
+
+`omalauncher+` trzyma swoje extras z dala od upstreamu, w grupach
+**icons → day & night → home → drawer → labels → search → widgets →
+notifications → corners**: packi i rozmiar ikon, tint, day/night, toggle
+stripa, align + ukryte apki, labelki, wyciszana notyfikacja Linuxa,
+rogi (theme albo 0–60px), frost per-kafelek z tapety.
+
+### 🔒 Lockscreen (`lockscreen/`)
+
+Druga apka w repo (`dev.omalauncher.plus.lockscreen`): zegar nad systemowym
+lock screenem + dokładane bloki (clock, date, battery, akcje). Bez Linuxa.
+
+> Upstream PRs, każdy tylko ze swoim ficzrem: swipe down →
+> [#119](https://github.com/SimonSchubert/omalauncher/pull/119),
+> icon packs + icon size →
+> [#121](https://github.com/SimonSchubert/omalauncher/pull/121).
+
+## 📱 Baza: upstream
+
+Ekran domowy w stylu [Omarchy](https://omarchy.org) + opcjonalny Arch Linux
+ARM obok apiek z telefonu: proot bez roota, Wayland, okna Linuxa jako osobne
+taski w Recents. 22 motywy Omarchy z tapetami, widgety w OWL + ich sklep,
+pacman/AUR, terminale, GPU Mali, agenci kodujący z bara.
 
 ![The home screen in twelve Omarchy themes, each with different widgets](art/collage.png)
 
@@ -24,125 +110,11 @@ window opens as its own Android task, with its own card in Recents.
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/04.png" width="24%" alt="Screenshot">
 </p>
 
-- **Themes**: all 22 Omarchy themes, with their wallpapers, applied to the
-  launcher and to the Linux apps, plus the community themes from
-  [omarchy.org/themes](https://omarchy.org/themes/), or your own in
-  `~/.config/omarchy/themes`
-- **Widgets** written in OWL, a small declarative language you can edit on the
-  phone, plus a [widget store](https://github.com/SimonSchubert/omarchy-widgets)
-- **Linux, optional**: pacman and the AUR, Linux apps in their own windows,
-  terminal widgets, a file manager, and opt-in GPU acceleration on Mali GPUs
-- **Coding agents**: the bar at the bottom sends a prompt to Claude Code, Codex,
-  Copilot, opencode and others, which open in a terminal
-- No account, no ads, no tracking
+Więcej: [README.plus.en.md](README.plus.en.md) (to samo
+[po polsku](README.plus.pl.md)), strona [omalauncher-plus.html](omalauncher-plus.html),
+inwentaryzacja deweloperska [PLUS.md](PLUS.md).
 
-Needs an arm64 phone with Android 10 or newer. Without Linux, the launcher still
-has the themes, wallpapers, Android apps and the widgets that don't run commands.
-
-More docs: [README.plus.en.md](README.plus.en.md) (same in
-[Polish](README.plus.pl.md)), the one-file page
-[omalauncher-plus.html](omalauncher-plus.html), and the dev inventory
-[PLUS.md](PLUS.md).
-
-## Install
-
-Grab the APK from **Releases** (`releases/omalauncher-plus-*.apk` is also
-committed here), install it and set Omalauncher+ as the default launcher.
-Release builds are signed with a debug key (no upload key in this repo) —
-fine for sideloading.
-
-## What's new in this fork
-
-### Day & night themes
-
-Settings › omalauncher+ › day & night picks a theme for the day and one for
-the night (`none` keeps whatever shows) plus the switch hours, and flips
-them automatically: on every return home and every minute while home is
-visible.
-
-### Recent apps, your way
-
-The strip above the bar can be turned off entirely (its room goes back to
-the grid), and any app can be long-pressed out of it with **hide from
-recents** — no usage history lost, and the hidden ones wait in
-omalauncher+ › drawer, one tap to bring them back.
-
-### A drawer built for the thumb
-
-Niagara-style letter rail on the right edge (drag to filter, ★ clears, the
-letter parks top-left until then) with the filtered bucket pinned to the
-bottom, repacked into full rows right above the bar. Rows can also hug the
-rail with **align apps right**. Search results grow bottom-up, best match
-first.
-
-### Custom icon packs and icon size
-
-Settings › icon pack lists third-party icon packs installed on the phone
-(Nova, ADW, GO, Apex, Tesla, Fede, Motorola and Sony theme actions). Picking
-one redraws every app icon from the pack: component mapping, scale, iconback,
-iconmask and iconupon layers from the pack's `appfilter.xml` are all honored,
-and the monochrome icon style still works off the pack's icons. Apps the pack
-has nothing for keep their own icons.
-
-Packs that draw small stay readable too: settings › icon size scales the icon
-slot (small 0.8x, normal 1x, large 1.25x) in the drawer, the recent strip, the
-shortcut menu and the pin dialog, and re-renders app icons at the new size.
-
-### A bar that also searches
-
-Typing in the bottom bar used to show one echo row (`ask <agent>: <text>`).
-The echo is gone — Enter in the bar asks the agent by default — and two action
-rows take its place above the bar, store over web:
-
-- **search web** opens the query in the default browser,
-- **search store** opens it in the Play app (its site when Play is absent) or
-  on F-Droid.
-
-The bar's button says what Enter does (`⏎ ask`, `⌕ web`, `⌕ store`, `▸ open`),
-and Tab/arrows walk apps, store, web and the agent's ask. Settings › search
-picks the web engine (Google by default, DuckDuckGo, Bing, or a custom URL with
-`{q}` for the query) and the store (Play or F-Droid).
-
-### Swipe down for notifications
-
-Swiping down anywhere on home pulls down Android's notification shade, like
-stock launchers. Both directions are configurable in settings › gestures:
-swipe up and swipe down each open the app drawer, the notifications, or do
-nothing. The original swipe-up drawer behavior is unchanged by default.
-
-### Coding agent installs that work
-
-npm-based agents (OpenCode, Grok, Kimi) install with plain `npm install -g`
-after mise sets up Node, instead of mise's npm backend (current mise passes an
-empty `--before` flag that fails the install). Install scripts are re-enabled
-so packages whose binary comes from a postinstall (OpenCode) actually get it;
-a broken copy left by an earlier attempt is reinstalled from scratch.
-
-### Omalauncher+ settings
-
-Settings › omalauncher+ holds this fork's own extras, away from upstream's
-rows, grouped as icons → day & night → home → drawer → labels → search →
-widgets → notifications → corners: the icon pack and icon size screens, icon
-shape (system, circle, squircle), adaptive background on/off, grayscale, and
-tint (off, custom colors with an optional top-to-bottom duotone gradient, or
-the theme's accent, reapplied on every theme change); the day/night switcher;
-the recent apps strip toggle; drawer row alignment plus the hidden-recents
-list; labels on/off separately for home and drawer; a switch hiding the Linux
-session notification (gone while idle, still shows installs and errors);
-a corner radius slider (theme, or 0 to 60px over the whole launcher); and a
-blurred widget background switch (per-tile frost sampling the wallpaper).
-Long-pressing home also offers settings next to the themes.
-
-### Lockscreen (`lockscreen/`)
-
-A second app and APK in this repo: `dev.omalauncher.plus.lockscreen`, a clock
-over the system lock screen in the launcher's monospace voice. A foreground
-service watches for screen-off and raises it with a full-screen intent; swipe
-up dismisses the keyguard (with a PIN set, the system's PIN pad shows — the
-lockscreen never sees credentials). Blocks are added and removed in its setup:
-clock, date, battery level, and flashlight/camera shortcuts. No Linux needed.
-
-## Using it
+## ▶️ Using it
 
 The bar: the one input at the bottom of the home screen opens apps and asks
 coding agents. Focusing it opens the list of Linux and Android apps; typing
@@ -160,7 +132,7 @@ Hardware keyboard shortcuts: Super+Enter (terminal), Super+Space or
 Super+A (the bar), Super+1..9 (home pages) on the home screen; Super+Enter
 and Super+W (close) in Linux windows.
 
-## Building
+## 🔨 Building
 
 ```sh
 ./scripts/fetch-proot.sh          # Termux's proot -> app/src/main/jniLibs (needs bsdtar and NDK 30.0.16248370)
@@ -186,7 +158,7 @@ In debug builds you can launch guest commands with
 - [app/src/main/assets/widgets/README.md](app/src/main/assets/widgets/README.md):
   the widget language
 
-## Layout
+## 🗂️ Layout
 
 - `app/`: the Android app (Kotlin, Jetpack Compose, and the JNI bridge in `src/main/cpp`)
 - `owl/`: the widget language and the `owl` command line, plain Kotlin
@@ -195,7 +167,7 @@ In debug builds you can launch guest commands with
 - `fastlane/`: the Play listing and the upload lanes
 - `scripts/`: fetching proot and theme colors, rendering icons, screenshots and widget previews
 
-## License
+## 📄 License
 
 MIT, see [LICENSE](LICENSE), for Omalauncher's own code and artwork. The
 coding agents' logos, the symbol font and Omarchy's theme colors are not
