@@ -132,6 +132,11 @@ internal object GpuDrivers {
     const val MESA_ZINK_TAR_SHA256 = "104daac072cf1a0148a5928f8f773eab760512ed1bf9b05d02cc670d8150dfe3"
     /** libEGL_mesa.so after extract. sha256sum follows the symlink. */
     const val MESA_ZINK_LIB_SHA256 = "bf9ea007f4babd55c86cfe87e8fd7b0cfa47e78fc34aa89b72fa60c7b84837e9"
+    /**
+     * The archive's sha256, written after a good extract. Zink lives in
+     * libgallium, so a rebuilt bundle can keep the same libEGL; this changes anyway.
+     */
+    const val MESA_ZINK_STAMP = "/usr/local/omalauncher-mesa/bundle.sha256"
 
     private val mali = GpuDriver(
         kind = GpuKind.MALI,
@@ -177,8 +182,8 @@ internal object GpuDrivers {
     }
 
     /**
-     * Unpacks the patched libEGL and zink next to each other. The sha256 is the
-     * installed libEGL, so a later APK that carries a new build replaces it.
+     * Unpacks the patched libEGL and zink next to each other. The stamp names
+     * the archive it came from, so a later APK that carries a new build replaces it.
      */
     fun mesaZinkScript(): String {
         val json = """{"file_format_version":"1.0.0","ICD":{"library_path":"$MESA_ZINK_LIB"}}"""
@@ -186,6 +191,7 @@ internal object GpuDrivers {
         val list = shellQuote("/tmp/omalauncher-mesa.list")
         val tarOk = "echo '$MESA_ZINK_TAR_SHA256  $MESA_ZINK_BUNDLE' | sha256sum -c -"
         val libOk = "echo '$MESA_ZINK_LIB_SHA256  $MESA_ZINK_LIB' | sha256sum -c -"
+        val stamp = shellQuote(MESA_ZINK_STAMP)
         // Refuse a member that leaves the prefix or walks up. Then extract.
         // Arch's tar is GNU tar. It has no --no-absolute-names (that flag is
         // bsdtar) and exits 64 before unpacking. GNU tar already strips a
@@ -196,8 +202,9 @@ internal object GpuDrivers {
                 "! grep -Ev '^usr/local/omalauncher-mesa/' $list && " +
                 "! grep -E '(^/|\\.\\.)' $list"
         val unpack =
-            "$tarOk && $members && tar -xJf $bundle -C / && $libOk && rm -f $list"
-        return "{ $libOk 2>/dev/null || { $unpack; }; } && rm -f $list && " +
+            "$tarOk && $members && tar -xJf $bundle -C / && $libOk && rm -f $list && " +
+                "echo '$MESA_ZINK_TAR_SHA256' > $stamp"
+        return "{ grep -qx '$MESA_ZINK_TAR_SHA256' $stamp 2>/dev/null || { $unpack; }; } && rm -f $list && " +
             "mkdir -p ${shellQuote(MESA_EGL_JSON.substringBeforeLast('/'))} && " +
             "printf '%s\\n' ${shellQuote(json)} > ${shellQuote(MESA_EGL_JSON)}"
     }

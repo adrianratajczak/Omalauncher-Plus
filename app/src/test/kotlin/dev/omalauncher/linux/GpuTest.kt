@@ -109,6 +109,9 @@ class GpuTest {
         assertTrue(script.contains("! grep -Ev '^usr/local/omalauncher-mesa/'"))
         assertTrue(script.contains("/usr/local/omalauncher-mesa/lib/libEGL_mesa.so"))
         assertTrue(script.contains("bf9ea007f4babd55c86cfe87e8fd7b0cfa47e78fc34aa89b72fa60c7b84837e9"))
+        // A rebuilt bundle can keep libEGL, so the skip is on the archive's stamp, written after the extract.
+        assertTrue(script.contains("{ grep -qx '104daac072cf1a0148a5928f8f773eab760512ed1bf9b05d02cc670d8150dfe3' '/usr/local/omalauncher-mesa/bundle.sha256'"))
+        assertTrue(script.indexOf("> '/usr/local/omalauncher-mesa/bundle.sha256'") > extractAt)
         assertEquals("Adreno", driver.label)
     }
 

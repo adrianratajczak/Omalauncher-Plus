@@ -71,17 +71,11 @@ class Gpu(
         val driver = spec ?: return
         if (!wanted || active || state is JobState.Working) return
         if (!guestFile(driver.driverPath).isFile) return turnOff()
-        // GPU mode turned on before this driver used the patched Mesa: its env
-        // names that Mesa, so install it first.
-        if (!guestFile(GpuDrivers.MESA_ZINK_LIB).isFile) {
-            stageMesaBundle()
-            if (!run("installing", GpuDrivers.mesaZinkScript())) {
-                proot.graphicsEnv = SOFTWARE_ENV
-                conceal(driver)
-                return
-            }
-        }
-        if (prefs.getString(CHECKED_BUILD, null) == build) {
+        // The APK carries a different Mesa than the guest has, or none was installed
+        // yet (Mali before it used the patched Mesa). The env names that Mesa.
+        val mesaCurrent = runCatching { guestFile(GpuDrivers.MESA_ZINK_STAMP).readText().trim() }
+            .getOrNull() == GpuDrivers.MESA_ZINK_TAR_SHA256
+        if (mesaCurrent && prefs.getString(CHECKED_BUILD, null) == build) {
             // An older install wrote Mali's manifest on pacman's path. The env now
             // names the /usr/local file, so that file has to exist before we activate.
             if (!guestFile(driver.icdPath).isFile && !run("installing", GpuDrivers.manifestScript(driver))) {
@@ -91,8 +85,16 @@ class Gpu(
             }
             return activate(driver)
         }
-        Log.i(TAG, "system changed since the last GPU check, checking again")
-        if (run("checking", GpuDrivers.probeScript(driver))) {
+        // Install and check in one run: run() records the build as checked on success.
+        val ok = if (mesaCurrent) {
+            Log.i(TAG, "system changed since the last GPU check, checking again")
+            run("checking", GpuDrivers.probeScript(driver))
+        } else {
+            Log.i(TAG, "the patched Mesa changed, installing it and checking again")
+            stageMesaBundle()
+            run("installing", GpuDrivers.mesaZinkScript() + " && " + GpuDrivers.probeScript(driver))
+        }
+        if (ok) {
             activate(driver)
         } else {
             proot.graphicsEnv = SOFTWARE_ENV
