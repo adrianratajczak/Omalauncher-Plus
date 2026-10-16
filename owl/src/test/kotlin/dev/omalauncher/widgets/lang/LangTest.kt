@@ -822,6 +822,23 @@ class LangTest {
         }
     }
 
+    @Test fun urlValuesNotThroughEncAreWarnedAboutWithTheFix() {
+        fun warnings(url: String) = Compiler.compile("widget {\n meta { owl: 8 }\n state v = \"x\"\n source s = http($url) json\n Text { text: v } }").warnings
+        assertEquals(listOf("4:35: a value in this URL isn't put through enc(), so the store's review can't show where it goes: write \${enc(lower(v))} (a number can go through int(n) or fixed(n, 4) instead; a path with / in it can't, so write its fixed parts out and enc() only the values between them)"), warnings("\"https://a.b/q=${'$'}{lower(v)}\""))
+        assertTrue(warnings("\"https://a.b/q=\" + v").single().contains("write enc(v)"))
+        assertTrue(warnings("\"https://a.b/${'$'}{sh(v)}\"").single().contains("enc(...) instead of sh(...)"))
+        assertTrue(warnings("\"https://${'$'}{enc(v)}/x\"").single().contains("the server in this URL comes from a value"))
+        assertEquals(emptyList<String>(), warnings("\"https://a.b/${'$'}{enc(v)}\""))
+        // The whole URL from a value: enc() would break it, so the fix is to write it out.
+        assertTrue(warnings("v").single().contains("this URL is all a value (v)"))
+        assertTrue(warnings("v == \"\" ? null : v").single().contains("this URL is all a value"))
+        assertTrue(warnings("\"https://a.b/${'$'}{replace(v, \" \", \"%20\")}\"").single().contains("drop the replace(...)"))
+        // A fixed let is fixed text: listed, nothing to warn about.
+        val p = Compiler.compile("widget {\n meta { owl: 8 }\n let api = \"https://a.b\"\n state v = \"x\"\n source s = http(\"${'$'}{api}/q/${'$'}{enc(v)}\") json\n Text { text: v } }")
+        assertEquals(listOf("http GET https://a.b/q/${Compiler.VALUE}"), p.commands)
+        assertEquals(emptyList<String>(), p.warnings)
+    }
+
     @Test fun fmtTimeFollowsLanguageChanges() {
         val was = Locale.getDefault()
         try {

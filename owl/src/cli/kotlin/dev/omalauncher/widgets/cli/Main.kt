@@ -51,6 +51,7 @@ private fun check(files: List<String>): Int {
         try {
             val p = Compiler.compile(text)
             println("ok  $f  (${p.name}, ${p.nodeCount} nodes)")
+            for (w in p.warnings) println("  warning: $w")
         } catch (e: CompileError) {
             failed++
             println("ERR $f:" + Source(text).format(e))

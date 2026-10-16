@@ -651,6 +651,8 @@ class WidgetEngine(
         return try {
             val p = Compiler.compile(text)
             writeError(file, null)
+            // Advice, after the clear and before the check result, so owl-check prints it with the rest.
+            for (w in p.warnings) writeError(file, "warning: $w", append = true)
             writeCheck(file, hash, "ok")
             WidgetSpec(file, p.name, layout.page(file.name) ?: p.page, p.order, p, null, p.size, p.minSize, stamp, p.kind)
         } catch (e: CompileError) {

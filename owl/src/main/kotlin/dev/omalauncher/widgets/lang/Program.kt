@@ -324,4 +324,6 @@ class Program(
     val icon: String? = null,
     /** An app's icon, when `icon:` names an `asset` (a PNG or other image) instead. */
     val iconImage: ByteArray? = null,
+    /** What compiles but is likely wrong, one line each with its line:col, for owl-check: a URL value not put through enc(). */
+    val warnings: List<String> = emptyList(),
 )

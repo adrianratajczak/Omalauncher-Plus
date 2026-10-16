@@ -137,7 +137,10 @@ source coin = http("https://${enc(host)}/coins") json                           
 ```
 
 The store lists such a URL with `‹value›` where each value goes, and one built any other way as
-fetching "a URL put together while the widget runs".
+fetching "a URL put together while the widget runs". `owl-check` warns about those, with the line and
+the fix to make. A fixed base in a `let` counts as fixed text: `let api = "https://api.example.com"`, then
+`"${api}/coins/${enc(id)}"`. A value that is a path with `/` in it can't go through `enc()` (it would
+encode the slashes): write the fixed parts of the path out and `enc()` only what goes between them.
 
 ## Triggers
 
