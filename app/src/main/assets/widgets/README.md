@@ -84,7 +84,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, images from the web and `sound` 8; using them without declaring it is an error |
+| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web and `sound` 8; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -270,6 +270,7 @@ the widget that ran it refreshes its sources; other widgets keep their own inter
 | `androidApp("org.pkg")` | opens an Android app by package name, or by an `android.apps` key to open that copy in a work profile or clone |
 | `copy(text)` | copies text to the Android clipboard |
 | `notify("title", "text")` | posts an Android notification (if the launcher may post them) |
+| `post("https://...", body, headers)` | sends an HTTP POST from Android: a map or list `body` goes as JSON, text as it is; `headers` is a map like `http(...)`'s. `x = post(...)` puts the answer into the state `x` when it arrives: `{code, ok, out}`, with `out` parsed when it's JSON. Never retried; a null URL sends nothing. See Sending (owl 8) |
 | `url("https://...")` | opens in the Android browser. Other links open in the app that takes them: `tel:` the dialer, `geo:` maps, `mailto:` email |
 | `share(text)` | opens Android's share sheet with the text (owl 7) |
 | `haptic()` | a short tap of haptic feedback, if the user has touch feedback on (owl 7) |
@@ -300,6 +301,30 @@ app "flags" {
 Like `http(...)`, the URLs are listed for whoever reviews the file: `image GET https://flagcdn.com/…`.
 Keep the start of the URL fixed, up to its first `/` after the server, so the server is known; a URL
 built entirely from values is flagged. Plain `http://` isn't loaded.
+
+## Sending
+
+`http(...)` sources only read. For the rest of a web API (signing in, saving a change) a handler sends a
+POST with `post(url, body, headers)` (owl 8). It goes out from Android, so it needs no Linux, once per
+tap, and the widget's sources run again when the answer is in, so what changed shows:
+
+```owl
+app "todo" {
+  meta { owl: 8 }
+  state added = null
+  source items = http("https://api.example.com/items") json
+  on added { notify("todo", value.ok ? "added" : "couldn't add: ${value.code}") }
+  Column {
+    Input { placeholder: "add…"; clear: true; onSubmit: added = post("https://api.example.com/items", {title: value}) }
+    for i in items ?? [] { Text { text: i.title } }
+  }
+}
+```
+
+Handlers have no `if`, so a `post` that only sometimes goes out takes a null URL the rest of the time:
+`every 5s { tok = post(code == "" ? null : "https://…/token", {code: code}) }` polls only while there is a
+code. The URLs are listed for review like `http(...)`'s, as `http POST https://…`, under the same rule:
+keep the server fixed and put values into the URL with `enc(...)`.
 
 ## Sounds
 

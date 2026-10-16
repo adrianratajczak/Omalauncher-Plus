@@ -35,6 +35,8 @@ import dev.omalauncher.widgets.lang.Lst
 import dev.omalauncher.widgets.lang.Null
 import dev.omalauncher.widgets.lang.Num
 import dev.omalauncher.widgets.lang.Obj
+import dev.omalauncher.widgets.lang.TRUE
+import dev.omalauncher.widgets.lang.FALSE
 import dev.omalauncher.widgets.lang.Program
 import dev.omalauncher.widgets.lang.Sprite
 import dev.omalauncher.widgets.lang.Str
@@ -70,11 +72,15 @@ interface Services {
         timeoutSeconds: Int,
     ): ShellResult
 
-    /** An HTTP GET from Android, not the guest: [ShellResult.code] is the HTTP status, or -1 if the request failed. */
+    /**
+     * An HTTP request from Android, not the guest: a GET, or a POST of [body] for `post(...)`.
+     * [ShellResult.code] is the HTTP status, or -1 if the request failed.
+     */
     suspend fun http(
         url: String,
         headers: Map<String, String>,
         timeoutSeconds: Int,
+        body: ByteArray? = null,
     ): ShellResult
 
     /**
@@ -363,6 +369,29 @@ class WidgetInstance(
             if (r == null) return@run report("run: the command couldn't start")
             if (r.code != 0 && r.err.isNotBlank()) report("run: exit ${r.code}: ${r.err.lines().take(3).joinToString(" / ")}")
             write(slot, Str(r.out))
+            refresh()
+        }
+    }
+
+    override fun post(
+        url: String,
+        body: Value,
+        headers: Map<String, String>,
+        slot: Int?,
+    ) {
+        // A map or list goes as JSON, anything else as its text.
+        val json = if (body is Obj || body is Lst) Json.write(body) else null
+        val bytes = (json ?: if (body == Null) "" else body.toString()).toByteArray()
+        val sent = if (json != null && headers.keys.none { it.equals("Content-Type", true) }) headers + ("Content-Type" to "application/json") else headers
+        val scope = scope ?: return
+        scope.launch {
+            val r = services.http(url, sent, POST_TIMEOUT_S, bytes)
+            val ok = r.code in 200..299
+            if (!ok) report("post: ${if (r.code > 0) "HTTP ${r.code}" else "request failed"}: ${r.err}")
+            if (slot != null) {
+                write(slot, Obj(mapOf("code" to Num(r.code.toDouble()), "ok" to if (ok) TRUE else FALSE, "out" to if (r.out.isEmpty()) Null else Json.parseOrText(r.out))))
+            }
+            // Like after any action: what it changed shows in this widget's sources.
             refresh()
         }
     }
@@ -1009,6 +1038,9 @@ class WidgetInstance(
 
         /** How soon a failed http fetch is tried again, if its interval is longer. */
         private const val RETRY_MS = 30_000L
+
+        /** How long a post(...) may take: a sign-in or a change, sent once and never retried. */
+        private const val POST_TIMEOUT_S = 30
 
         /** Distinct SVGs kept per widget; each is drawing commands, a few KB. */
         private const val MAX_VECTORS = 128

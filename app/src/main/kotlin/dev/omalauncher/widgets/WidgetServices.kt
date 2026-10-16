@@ -406,6 +406,7 @@ class WidgetServices(
         url: String,
         headers: Map<String, String>,
         timeoutSeconds: Int,
+        body: ByteArray?,
     ): ShellResult =
         withContext(Dispatchers.IO) {
             if (!url.startsWith("https://") && !url.startsWith("http://")) return@withContext ShellResult("", "not an http(s) URL: $url", -1)
@@ -416,6 +417,12 @@ class WidgetServices(
                     connection.readTimeout = timeoutSeconds * 1000
                     connection.setRequestProperty("User-Agent", "omalauncher-widgets")
                     headers.forEach { (k, v) -> connection.setRequestProperty(k, v) }
+                    if (body != null) {
+                        connection.requestMethod = "POST"
+                        connection.doOutput = true
+                        connection.setFixedLengthStreamingMode(body.size)
+                        connection.outputStream.use { it.write(body) }
+                    }
                     val code = connection.responseCode
                     val stream = if (code >= 400) connection.errorStream else connection.inputStream
                     // Widgets show a few values; a runaway response mustn't fill memory.

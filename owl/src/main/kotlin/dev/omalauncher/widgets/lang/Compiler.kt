@@ -111,7 +111,7 @@ class Compiler private constructor(
                 // owl 7: more of the phone, without new permissions.
                 listOf("android.alarm", "android.modes", "torch", "share", "haptic").associateWith { 7 } +
                 // owl 8: apps, files that aren't tiles; the phone's apps as a list; images and sounds from the web; values in URLs.
-                listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc").associateWith { 8 }
+                listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc", "post").associateWith { 8 }
 
         private const val WEB_IMAGE = "an image from the web"
 
@@ -599,8 +599,7 @@ class Compiler private constructor(
                 val url = ex(e.args[0], root)
                 (url.const as? Str)?.v?.let { if (!it.startsWith("https://") && !it.startsWith("http://")) fail("http takes an http:// or https:// URL", e.args[0].pos) }
                 // Like a command's sh(...) values: listed by shape when the host is fixed and each value is enc(...) or a number.
-                val shapes = (url.const as? Str)?.let { listOf(it.v) } ?: shapes(e.args[0], root, "enc")?.takeIf { it.isNotEmpty() && it.all { s -> FIXED_HOST.containsMatchIn(s) } }
-                if (shapes == null) commands += "http GET (a URL built from widget values)" else shapes.forEach { commands += "http GET $it" }
+                listUrl("http GET", e.args[0], url, root)
                 Global.Source(d.name, "http", url, (every ?: 60.0).coerceAtLeast(5.0), d.json, timeout.coerceIn(1, 300), d.status, e.args.getOrNull(1)?.let { ex(it, root) })
             }
             e is Expr.Call && e.name in setOf("cmd", "stream") -> {
@@ -889,12 +888,14 @@ class Compiler private constructor(
                             val run: (Env) -> Unit = { env -> env.host.runInto(command(env).toString(), slot) }
                             return@map run
                         }
+                        if (call?.name == "post") return@map post(call, inner, slot)
                         val v = ex(s.value, inner)
                         val run: (Env) -> Unit = { env -> env.host.write(slot, v(env)) }
                         run
                     }
                     is Stmt.Do -> {
                         val call = s.call as Expr.Call
+                        if (call.name == "post") return@map post(call, inner, null)
                         val arity = Builtins.actions[call.name] ?: fail("'${call.name}' isn't an action (${Builtins.actions.keys.joinToString()})", call.pos)
                         if (call.args.size !in arity) fail("${call.name} takes ${arity.first}-${arity.last} values", call.pos)
                         val args = call.args.map { ex(it, inner) }
@@ -933,6 +934,43 @@ class Compiler private constructor(
                 env.host.report("${h.name}: ${x.message ?: x}")
             }
         }
+    }
+
+    /**
+     * `post(url, body, headers)`, or `x = post(...)` to get the answer into the state [slot]: an HTTP POST
+     * from Android. Its URLs are listed like http(...)'s, as "http POST <url>".
+     */
+    private fun post(
+        call: Expr.Call,
+        scope: Scope,
+        slot: Int?,
+    ): (Env) -> Unit {
+        if (call.args.size !in 1..3 || call.named.isNotEmpty()) fail("post(\"https://...\", body, headers) takes a URL, optionally a body and a map of headers", call.pos)
+        since("post", call.pos)
+        val url = ex(call.args[0], scope)
+        (url.const as? Str)?.v?.let { if (!it.startsWith("https://") && !it.startsWith("http://")) fail("post takes an http:// or https:// URL", call.args[0].pos) }
+        listUrl("http POST", call.args[0], url, scope)
+        val body = call.args.getOrNull(1)?.let { ex(it, scope) }
+        val headers = call.args.getOrNull(2)?.let { ex(it, scope) }
+        return { env ->
+            val target = url(env)
+            // Like any action whose value hasn't loaded: a null URL sends nothing.
+            if (target != Null) {
+                val h = (headers?.invoke(env) as? Obj)?.fields.orEmpty().mapValues { it.value.toString() }
+                env.host.post(target.toString(), body?.invoke(env) ?: Null, h, slot)
+            }
+        }
+    }
+
+    /** Lists an http URL for the reviewer, by shape when the host is fixed and each value in it is enc(...) or a number. */
+    private fun listUrl(
+        what: String,
+        e: Expr,
+        url: Ev,
+        scope: Scope,
+    ) {
+        val shapes = (url.const as? Str)?.let { listOf(it.v) } ?: shapes(e, scope, "enc")?.takeIf { it.isNotEmpty() && it.all { s -> FIXED_HOST.containsMatchIn(s) } }
+        if (shapes == null) commands += "$what (a URL built from widget values)" else shapes.forEach { commands += "$what $it" }
     }
 
     // Expressions

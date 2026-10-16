@@ -51,6 +51,15 @@ class LangTest {
             actions += "runInto $slot $command"
         }
 
+        override fun post(
+            url: String,
+            body: Value,
+            headers: Map<String, String>,
+            slot: Int?,
+        ) {
+            actions += "post $slot $url $body $headers"
+        }
+
         override val budget = Budget(10_000)
     }
 
@@ -203,6 +212,27 @@ class LangTest {
         assertTrue(s.headers != null && s.status)
         assertEquals(listOf("http GET https://x.test/a"), p.commands)
         assertTrue(compileError("widget {\nsource w = http(\"file:///etc/passwd\")\nText { text: w }\n}").contains("http:// or https://"))
+    }
+
+    @Test fun postSendsFromHandlers() {
+        val p =
+            Compiler.compile(
+                "app \"t\" {\n meta { owl: 8 }\n state id = \"a b\"\n state tok = null\n state sent = null\n back: true\n" +
+                    " onBack: { tok = post(\"https://x.test/token\", {code: id}, {Authorization: \"Bearer ${'$'}{id}\"}); post(\"https://x.test/s/${'$'}{enc(id)}\") }\n" +
+                    " every 5s { sent = post(tok == null ? null : \"https://x.test/poll\", \"raw\") }\n Text { text: id } }",
+            )
+        val host = TestHost(p)
+        p.onBack!!.run(Env.root(host), emptyList())
+        assertEquals(listOf("post 1 https://x.test/token {code: a b} {Authorization=Bearer a b}", "post null https://x.test/s/a%20b null {}"), host.actions)
+        // A null URL sends nothing, like any action whose value hasn't loaded.
+        host.actions.clear()
+        p.triggers.single().action.run(Env.root(host), emptyList())
+        assertEquals(emptyList<String>(), host.actions)
+        assertEquals(setOf("http POST https://x.test/token", "http POST https://x.test/s/${Compiler.VALUE}", "http POST https://x.test/poll"), p.commands.toSet())
+        assertFalse(p.needsLinux)
+        assertTrue(compileError("widget {\n meta { owl: 7 }\n onTap: post(\"https://x.test/\")\n Text { text: 1 } }").contains("post needs owl 8"))
+        assertTrue(compileError("app \"t\" {\n meta { owl: 8 }\n back: true\n onBack: post(\"file:///x\")\n Text { text: 1 } }").contains("http:// or https://"))
+        assertEquals(listOf("http POST (a URL built from widget values)"), Compiler.compile("app \"t\" {\n meta { owl: 8 }\n state u = \"\"\n back: true\n onBack: post(u)\n Text { text: 1 } }").commands)
     }
 
     @Test fun imagesFromTheWeb() {
