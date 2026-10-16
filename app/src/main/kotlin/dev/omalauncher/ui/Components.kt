@@ -110,6 +110,20 @@ fun PanelFrame(
 @Composable
 fun PanelTitle(text: String) = BasicText(text, style = Mono.copy(color = Palette.accent, fontSize = TextSize.Title), maxLines = 1, overflow = TextOverflow.Ellipsis)
 
+/** A [PanelTitle] that, with [onBack], has a back chevron before it; the chevron and the title both go back. */
+@Composable
+fun BackTitle(
+    text: String,
+    onBack: (() -> Unit)?,
+) {
+    if (onBack == null) return PanelTitle(text)
+    Row(Modifier.clickable(onClick = onBack).padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // The font subset has no left chevron; the right one turned around is the same shape.
+        Symbol(Glyph.ChevronRight, Palette.accent, Modifier.padding(end = 6.dp).rotate(180f), TextSize.Title)
+        PanelTitle(text)
+    }
+}
+
 /** An [OverlayPanel] action drawn with one of [Icons]: muted, the size of [RefreshButton]. */
 @Composable
 fun PanelIcon(

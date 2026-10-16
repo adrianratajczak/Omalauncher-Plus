@@ -285,6 +285,9 @@ class Program(
     /** The screen { } block: a full-screen view over the same globals, opened with screen(). */
     val screen: List<WNode>? = null,
     val screenTitle: Ev? = null,
+    /** An app's `back`: while true, the frame shows a back chevron and Back runs [onBack] instead of closing it. */
+    val back: Ev? = null,
+    val onBack: Action? = null,
     val onTap: Action?,
     val triggers: List<Trigger>,
     /** Shell commands this widget can run, known without running it; for reviewing shared widgets. */

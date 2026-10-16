@@ -283,7 +283,7 @@ class Compiler private constructor(
         val level = levelField?.let { constant(it.value, "meta values").num()?.toInt() ?: fail("owl: takes a number, like owl: 1", it.pos) } ?: 1
         if (level > LEVEL) fail("this widget needs owl $level; the launcher supports up to $LEVEL, so update the launcher", levelField!!.pos)
         if (body.animations.isNotEmpty()) fail("animate belongs inside a node", body.animations[0].pos)
-        for (h in body.handlers) if (h.name != "onTap") fail("a widget only takes onTap at the top level", h.pos)
+        for (h in body.handlers) if (h.name != "onTap" && !(ast.kind == OwlKind.App && h.name == "onBack")) fail("a widget only takes onTap at the top level", h.pos)
 
         // Sources, state and assets first: lets and components may use any of them.
         for (d in body.decls) {
@@ -371,7 +371,7 @@ class Compiler private constructor(
         triggers: List<Trigger>,
     ): Program {
         since("app \"…\" { }", 0)
-        for (p in body.props) if (p.name !in setOf("title", "icon")) fail("an app only takes title and icon (no size or page: it isn't a tile)", p.pos)
+        for (p in body.props) if (p.name !in setOf("title", "icon", "back")) fail("an app only takes title, icon and back (no size or page: it isn't a tile)", p.pos)
         // The drawer draws it before the app runs, so it's fixed in the file, not an expression: an SVG, or an asset's image.
         val iconProp = body.props.firstOrNull { it.name == "icon" }
         val iconImage =
@@ -387,7 +387,13 @@ class Compiler private constructor(
                 if (svg.length > MAX_ICON_CHARS) fail("icon is over ${MAX_ICON_CHARS / 1024} KB; keep it a simple shape, or use a PNG asset", p.pos)
                 svg
             }
-        body.handlers.firstOrNull()?.let { fail("handlers go on the nodes inside an app", it.pos) }
+        body.handlers.firstOrNull { it.name != "onBack" }?.let { fail("handlers go on the nodes inside an app; only onBack goes at its top", it.pos) }
+        // Back goes up a level inside the app while `back` is true, and closes it otherwise.
+        val backProp = body.props.firstOrNull { it.name == "back" }
+        val onBackHandler = body.handlers.firstOrNull { it.name == "onBack" }
+        if ((backProp == null) != (onBackHandler == null)) {
+            fail("back and onBack go together: back: view != \"list\" says when Back goes up a level, onBack: view = \"list\" does it", (backProp?.pos ?: onBackHandler!!.pos))
+        }
         body.items.firstOrNull { it is Item.Node && it.type == "screen" }?.let { fail("an app is a screen already: put its nodes at the top, without screen { }", it.pos) }
         nodes = 0
         maxNodes = MAX_SCREEN_NODES
@@ -410,6 +416,8 @@ class Compiler private constructor(
             root = emptyList(),
             screen = tree,
             screenTitle = body.props.firstOrNull { it.name == "title" }?.let { ex(it.value, root) },
+            back = backProp?.let { ex(it.value, root) },
+            onBack = onBackHandler?.let { handler(it, root) },
             onTap = null,
             triggers = triggers,
             commands = commands.toList(),

@@ -355,7 +355,7 @@ A file can also be an app instead of a widget: a screen of its own, listed in th
 The nodes at the top are the whole view, with the room and limits of a `screen { }`, and it takes
 the same declarations as a widget (sources, state, lets, components, triggers, `requires`, `meta`).
 There's no tile, so no `size`, `minSize`, `page`, `order`, `padding`, `background`, `onTap` or
-`screen { }`; the properties are `title` and `icon`, and `close()` closes it. Apps need owl 8 and
+`screen { }`; the properties are `title`, `icon` and `back` (with its `onBack`), and `close()` closes it. Apps need owl 8 and
 run only while open.
 
 ```owl
@@ -371,6 +371,28 @@ app "notes" {
     gap: 8
     Input { text: text; placeholder: "write…"; focus: true; onSubmit: text = value }
     Text { text: text }
+  }
+}
+```
+
+**Going back.** An app with views inside it (a list, then one item) says when Back goes up a
+level with `back`, and how with `onBack`. While `back` is true, the window shows a chevron before
+the title, and the chevron, the title and Android's Back run `onBack`; otherwise Back leaves the app.
+`title` is an expression too, so it can name the view that's open:
+
+```owl
+app "recipes" {
+  meta { owl: 8 }
+  state open = ""
+  title: open == "" ? "recipes" : open
+  back: open != ""
+  onBack: open = ""
+  Column {
+    if open == "" {
+      for r in ["soup", "bread"] { Text { text: r; onTap: open = r } }
+    } else {
+      Text { text: "how to make ${open}" }
+    }
   }
 }
 ```

@@ -2,6 +2,7 @@ package dev.omalauncher.widgets.lang
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -586,6 +587,19 @@ class LangTest {
         assertTrue(compileError("widget {\n meta { owl: 7 }\n source a = android.apps\n Text { text: 1 } }").contains("android.apps needs owl 8"))
     }
 
+    @Test fun appsGoBackALevelWhileBackHolds() {
+        val app = Compiler.compile("app \"x\" {\n meta { owl: 8 }\n state page = \"\"\n title: page == \"\" ? \"x\" : page\n back: page != \"\"\n onBack: page = \"\"\n Text { text: 1; onTap: page = \"tar\" } }")
+        val host = TestHost(app)
+        val env = Env.root(host)
+        assertFalse(app.back!!(env).truthy)
+        (app.screen!![0] as WNode.Element).handlers["onTap"]!!.run(env, emptyList())
+        assertTrue(app.back!!(env).truthy)
+        assertEquals("tar", app.screenTitle!!(env).toString())
+        app.onBack!!.run(env, emptyList())
+        assertFalse(app.back!!(env).truthy)
+        assertNull(Compiler.compile("app {\n meta { owl: 8 }\n Text { text: 1 } }").onBack)
+    }
+
     @Test fun appsAreScreensOfTheirOwn() {
         val app = Compiler.compile("app \"Notes\" {\n meta { owl: 8 }\n title: \"My notes\"\n state n = 0\n Column { Text { text: n }\n Button { text: \"x\"; onTap: close() } } }")
         assertEquals(OwlKind.App, app.kind)
@@ -598,8 +612,10 @@ class LangTest {
         assertEquals(OwlKind.Widget, Compiler.compile("widget {\n Text { text: 1 } }").kind)
 
         assertTrue(compileError("app {\n Text { text: 1 } }").contains("needs owl 8"))
-        assertTrue(compileError("app {\n meta { owl: 8 }\n size: 2x2\n Text { text: 1 } }").contains("only takes title and icon"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n size: 2x2\n Text { text: 1 } }").contains("only takes title, icon and back"))
         assertTrue(compileError("app {\n meta { owl: 8 }\n onTap: close()\n Text { text: 1 } }").contains("handlers go on the nodes"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n back: true\n Text { text: 1 } }").contains("back and onBack go together"))
+        assertTrue(compileError("app {\n meta { owl: 8 }\n onBack: close()\n Text { text: 1 } }").contains("back and onBack go together"))
         assertTrue(compileError("app {\n meta { owl: 8 }\n screen { Text { text: 1 } } }").contains("is a screen already"))
         assertTrue(compileError("app {\n meta { owl: 8 }\n Text { text: 1; onTap: screen() } }").contains("close() closes it"))
         assertTrue(compileError("app {\n meta { owl: 8 }\n }").contains("needs at least one node"))

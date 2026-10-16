@@ -19,9 +19,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
+import dev.omalauncher.ui.BackTitle
 import dev.omalauncher.ui.PanelFrame
 import dev.omalauncher.ui.PanelGap
-import dev.omalauncher.ui.PanelTitle
 import dev.omalauncher.ui.Palette
 import dev.omalauncher.ui.applySystemBars
 import dev.omalauncher.widgets.lang.text
@@ -50,7 +50,6 @@ class OwlAppActivity : InstantActivity() {
         setInstantContent {
             LaunchedEffect(Palette.isLight) { applySystemBars(this@OwlAppActivity, Palette.isLight) }
             LaunchedEffect(name) { runtime.widgets.appCloses.collect { if (it == name) closeInstantly() } }
-            BackHandler { backInstantly() }
             val (spec, inst) =
                 runtime.widgets.appInstance(name) ?: run {
                     LaunchedEffect(Unit) { closeInstantly() }
@@ -59,8 +58,12 @@ class OwlAppActivity : InstantActivity() {
             val icon = runtime.owlIcon(spec, mono = false)
             LaunchedEffect(spec.name, icon, Palette.accent) { describeTask(spec.name, icon?.asAndroidBitmap()) }
             val title = inst.program.screenTitle?.let { inst.eval(it, inst.root, "title").text() } ?: spec.name
+            // While the app's `back` holds, Back and the chevron go up a level inside it; otherwise Back leaves it.
+            val up = inst.program.back?.let { inst.eval(it, inst.root, "back").truthy } == true
+            val goUp: () -> Unit = { inst.program.onBack?.run(inst.root, emptyList()) }
+            BackHandler { if (up) goUp() else backInstantly() }
             Box(Modifier.fillMaxSize().background(Palette.background).safeDrawingPadding().padding(PanelGap)) {
-                PanelFrame(onClose = ::closeInstantly, title = { PanelTitle(title) }) {
+                PanelFrame(onClose = ::closeInstantly, title = { BackTitle(title, if (up) goUp else null) }) {
                     CompositionLocalProvider(LocalInputFocus provides true) {
                         WidgetScreen(inst, Modifier.weight(1f).fillMaxWidth())
                     }
