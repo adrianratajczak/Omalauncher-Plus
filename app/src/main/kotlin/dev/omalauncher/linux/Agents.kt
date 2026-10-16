@@ -22,6 +22,8 @@ data class Agent(
     val pkg: String,
     /** What starts it without a prompt, when that's more than [bin]. */
     val command: String = bin,
+    /** Whether mise needs node to install it: npm packages run their postinstall scripts with it. */
+    val node: Boolean = pkg.startsWith("npm:"),
 ) {
     /** Its activity alias in the manifest (cursor-agent -> CursorAgentWindow), so Recents names its window after it. */
     val windowAlias get() = bin.split('-').joinToString("") { it.replaceFirstChar(Char::uppercase) } + "Window"
@@ -31,7 +33,8 @@ data class Agent(
 val AGENTS =
     listOf(
         Agent("claude", "Claude Code", "Anthropic's coding agent", "claude"),
-        Agent("opencode", "OpenCode", "Open source agent, any model provider", "opencode"),
+        // mise installs OpenCode 2 from npm (@opencode/cli).
+        Agent("opencode", "OpenCode", "Open source agent, any model provider", "opencode", node = true),
         Agent("codex", "Codex", "OpenAI's coding agent", "codex"),
         Agent("grok", "Grok", "xAI's coding agent", "npm:@xai-official/grok"),
         Agent("copilot", "GitHub Copilot", "GitHub's coding agent", "copilot"),
@@ -50,6 +53,19 @@ val AGENTS =
         ),
         Agent("kimi", "Kimi", "Moonshot AI's coding agent", "npm:@moonshot-ai/kimi-code"),
     )
+
+/**
+ * Brings mise itself up to date. Which backend a tool installs from is built into mise, and an old mise
+ * breaks when a tool moves: OpenCode 2 left GitHub releases for npm, and mise 2026.10.8 still looked for
+ * it on GitHub (404). Best effort, since the old mise may still manage.
+ */
+const val MISE_SELF_UPDATE = "{ mise self-update -y || true; }"
+
+/** Adds node to the global config when an installed agent needs it but was installed before it did (OpenCode 1). */
+val MISE_NODE_FOR_AGENTS =
+    AGENTS.filter { it.node }.joinToString(" ", prefix = "if [ -z \"\$(mise ls -g node)\" ] && [ -n \"\$(mise ls -g ", postfix = ")\" ]; then mise use -g node@lts; fi") {
+        shellQuote(it.pkg)
+    }
 
 /**
  * Starts [agentBin] with a first prompt; OpenCode takes it as --prompt, Antigravity and Copilot as -i (they
@@ -126,8 +142,8 @@ class AgentStore(
     /** Installs [agent] with mise, bootstrapping mise itself if needed. */
     fun installScript(agent: Agent) =
         buildString {
-            if (!mise.exists()) append("curl -fsSL https://mise.run | sh && ")
-            if (agent.pkg.startsWith("npm:")) append("mise use -g node@lts && ")
+            append(if (mise.exists()) "$MISE_SELF_UPDATE && " else "curl -fsSL https://mise.run | sh && ")
+            if (agent.node) append("mise use -g node@lts && ")
             append("mise use -g ${shellQuote(agent.pkg)}")
             // Downloads are only needed during install; storage on phones is tight.
             append(" && mise cache clear && rm -rf ~/.local/share/mise/downloads")

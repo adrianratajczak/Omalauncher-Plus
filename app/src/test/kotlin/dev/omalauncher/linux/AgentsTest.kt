@@ -34,4 +34,13 @@ class AgentsTest {
         val output = process.inputStream.bufferedReader().use { it.readText() }
         assertEquals(output, 0, process.waitFor())
     }
+
+    /** OpenCode installs from before 2 have no node, and mise needs it for OpenCode 2's postinstall. */
+    @Test fun updatesAddNodeForOpencode() {
+        assertEquals(
+            "if [ -z \"\$(mise ls -g node)\" ] && [ -n \"\$(mise ls -g 'opencode' 'npm:@xai-official/grok' 'npm:@moonshot-ai/kimi-code')\" ]; " +
+                "then mise use -g node@lts; fi",
+            MISE_NODE_FOR_AGENTS,
+        )
+    }
 }
