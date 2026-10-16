@@ -427,7 +427,7 @@ inside) for what should run to the edges, like a photo, a map, a canvas or a bar
 **Under the navigation bar.** An app ends above Android's navigation bar (the gesture handle or the
 three buttons). With `edge: true` it runs on under it, like a list that scrolls behind the bar:
 `screenHeight` then reaches the screen's bottom, and `screenInset` is how much of it the bar covers,
-in dp (0 without `edge`, and while the keyboard is up). Taps there go to Android, so keep buttons
+in dp (0 without `edge`, and while the keyboard is up; only apps have it, since a widget's screen ends above the bar). Taps there go to Android, so keep buttons
 and the last row of a list above it: end a scrolling list with `Spacer { height: screenInset }`, and
 pad a view with buttons along its bottom by `screenInset`. `edge` is `true` or `false`, not an expression.
 

@@ -1181,6 +1181,8 @@ class Compiler private constructor(
             animated = true
             return Ev(null, { env -> Num(env.host.time()) }, Fast { env -> env.host.time() })
         }
+        // A widget's screen always ends above the navigation bar; only an app with `edge` runs under it.
+        if (e.name == "screenInset" && ast.kind != OwlKind.App) fail("screenInset is for apps with edge: true; a widget's screen ends above the navigation bar", e.pos)
         // Not reserved: widgets that already declare `rows` or `cols` keep their own.
         if (e.name in TILE || e.name == LINUX) {
             since(e.name, e.pos)

@@ -635,7 +635,9 @@ class LangTest {
         assertTrue(app.edge)
         assertFalse(Compiler.compile("app {\n meta { owl: 8 }\n Text { text: 1 } }").edge)
         assertTrue(compileError("app {\n meta { owl: 8 }\n state e = true\n edge: e\n Text { text: 1 } }").contains("edge is true or false"))
-        assertTrue(compileError("widget {\n meta { owl: 7 }\n Text { text: screenInset } }").contains("screenInset needs owl 8"))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: 1 }\n screen { Text { text: screenInset } } }").contains("screenInset is for apps"))
+        // Not reserved: a widget's own screenInset still works.
+        Compiler.compile("widget {\n let screenInset = 0\n Text { text: screenInset } }")
     }
 
     @Test fun appsAreScreensOfTheirOwn() {
