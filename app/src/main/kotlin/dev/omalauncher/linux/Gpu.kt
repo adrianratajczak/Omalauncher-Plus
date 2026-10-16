@@ -17,8 +17,8 @@ import java.nio.file.LinkOption
  * Opt-in GPU acceleration for Linux apps. The device node picks the driver:
  * PanVK-kbase on /dev/mali0 (Mali v10+: Pixel 7 and newer, recent MediaTek),
  * or Turnip on /dev/kgsl-3d0 when that node is an Adreno 6xx or newer.
- * OpenGL is zink on top of that Vulkan driver. Adreno uses a patched libEGL
- * that keeps zink when the compositor only offers wl_shm. Frames still reach
+ * OpenGL is zink on top of that Vulkan driver, through a patched libEGL that
+ * keeps zink when the compositor only offers wl_shm. Frames still reach
  * us as wl_shm buffers (MESA_VK_WSI_DEBUG=sw), so the compositor doesn't change.
  *
  * Each driver is a prerelease and talks to a kernel interface that Android
@@ -71,6 +71,16 @@ class Gpu(
         val driver = spec ?: return
         if (!wanted || active || state is JobState.Working) return
         if (!guestFile(driver.driverPath).isFile) return turnOff()
+        // GPU mode turned on before this driver used the patched Mesa: its env
+        // names that Mesa, so install it first.
+        if (!guestFile(GpuDrivers.MESA_ZINK_LIB).isFile) {
+            stageMesaBundle()
+            if (!run("installing", GpuDrivers.mesaZinkScript())) {
+                proot.graphicsEnv = SOFTWARE_ENV
+                conceal(driver)
+                return
+            }
+        }
         if (prefs.getString(CHECKED_BUILD, null) == build) {
             // An older install wrote Mali's manifest on pacman's path. The env now
             // names the /usr/local file, so that file has to exist before we activate.
@@ -96,7 +106,7 @@ class Gpu(
         if (state is JobState.Working) return
         prefs.edit().putBoolean(WANTED, true).apply()
         wanted = true
-        if (driver.kind == GpuKind.TURNIP) stageMesaBundle()
+        stageMesaBundle()
         val script = GpuDrivers.installScript(driver) + " && " + GpuDrivers.probeScript(driver)
         if (run("installing", script)) {
             activate(driver)

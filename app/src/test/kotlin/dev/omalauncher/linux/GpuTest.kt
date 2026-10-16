@@ -71,8 +71,10 @@ class GpuTest {
         assertTrue(probe.contains("export MESA_VK_WSI_DEBUG='sw';"))
         assertTrue(probe.contains("export GALLIUM_DRIVER='zink';"))
         assertTrue(driver.env.any { it == "GALLIUM_DRIVER=zink" })
-        assertFalse(probe.contains("MESA_LOADER_DRIVER_OVERRIDE"))
-        assertFalse(script.contains("mesa-zink"))
+        // Stock Mesa drops zink on the shm path and shows black windows; Mali uses the patched bundle too.
+        assertTrue(probe.contains("export MESA_LOADER_DRIVER_OVERRIDE='zink';"))
+        assertTrue(probe.contains("export __EGL_VENDOR_LIBRARY_FILENAMES='/usr/local/share/glvnd/egl_vendor.d/50_mesa.json';"))
+        assertTrue(script.contains("tar -xJf '/usr/local/share/omalauncher/mesa-zink.tar.xz' -C / &&"))
     }
 
     @Test fun turnipScriptPinsTheKgslPackageAndTheExtractedLibrary() {

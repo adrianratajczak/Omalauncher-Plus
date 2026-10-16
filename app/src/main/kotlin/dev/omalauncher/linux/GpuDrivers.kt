@@ -38,11 +38,18 @@ internal data class GpuDriver(
     val icdPath: String,
     val apiVersion: String,
     /**
-     * How OpenGL finds this GPU. Mali uses Arch's zink. Adreno also sets
-     * MESA_LOADER_DRIVER_OVERRIDE so Mesa keeps zink on the shm/kopper path,
-     * and points EGL at the patched libEGL under /usr/local/omalauncher-mesa.
+     * How OpenGL finds this GPU: zink, through the patched libEGL under
+     * /usr/local/omalauncher-mesa. Stock Mesa clears Zink when Wayland DRM
+     * init fails, then the shm buffer stays black; that happens on every GPU
+     * here, Mali included. The override keeps Zink set. The two paths select
+     * the patched libEGL and its matching zink, not Arch's.
      */
-    val openGlEnv: List<String> = listOf("GALLIUM_DRIVER=zink"),
+    val openGlEnv: List<String> = listOf(
+        "MESA_LOADER_DRIVER_OVERRIDE=zink",
+        "GALLIUM_DRIVER=zink",
+        "LIBGL_DRIVERS_PATH=/usr/local/omalauncher-mesa/lib/dri",
+        "__EGL_VENDOR_LIBRARY_FILENAMES=/usr/local/share/glvnd/egl_vendor.d/50_mesa.json",
+    ),
 ) {
     /**
      * Vulkan through this ICD, presented as wl_shm; OpenGL is zink on top of it.
@@ -153,15 +160,6 @@ internal object GpuDrivers {
         driverPath = "/usr/local/lib64/libvulkan_freedreno.so",
         icdPath = "/usr/local/share/vulkan/icd.d/freedreno_icd.aarch64.json",
         apiVersion = "1.4.359",
-        // Stock Mesa clears Zink when Wayland DRM init fails, then the shm
-        // buffer stays black. The override keeps Zink set. The two paths
-        // select the patched libEGL and its matching zink, not Arch's.
-        openGlEnv = listOf(
-            "MESA_LOADER_DRIVER_OVERRIDE=zink",
-            "GALLIUM_DRIVER=zink",
-            "LIBGL_DRIVERS_PATH=/usr/local/omalauncher-mesa/lib/dri",
-            "__EGL_VENDOR_LIBRARY_FILENAMES=/usr/local/share/glvnd/egl_vendor.d/50_mesa.json",
-        ),
     )
 
     fun of(kind: GpuKind): GpuDriver = when (kind) {
@@ -171,15 +169,14 @@ internal object GpuDrivers {
 
     /** Pacman for Mesa and the loader, then the pinned blob unless that exact file is already there. */
     fun installScript(driver: GpuDriver): String {
-        val mesa = if (driver.kind == GpuKind.TURNIP) " && " + mesaZinkScript() else ""
-        return pacmanInstall(driver.packages) + " && " + fetch(driver) + mesa
+        return pacmanInstall(driver.packages) + " && " + fetch(driver) + " && " + mesaZinkScript()
     }
 
     /**
      * Unpacks the patched libEGL and zink next to each other. The sha256 is the
      * installed libEGL, so a later APK that carries a new build replaces it.
      */
-    private fun mesaZinkScript(): String {
+    fun mesaZinkScript(): String {
         val json = """{"file_format_version":"1.0.0","ICD":{"library_path":"$MESA_ZINK_LIB"}}"""
         val bundle = shellQuote(MESA_ZINK_BUNDLE)
         val list = shellQuote("/tmp/omalauncher-mesa.list")
