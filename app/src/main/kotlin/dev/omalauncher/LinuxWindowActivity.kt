@@ -1,5 +1,6 @@
 package dev.omalauncher
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
@@ -125,6 +126,8 @@ class LinuxWindowActivity : InstantActivity() {
         if (isFinishing && w in runtime.wm.appWindows) runtime.wm.close(w)
     }
 
+    // Lint flags super.dispatchKeyEvent: ComponentActivity marks its override @RestrictTo, but Activity's is public API.
+    @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (runtime.keyboard.handle(event)) return true
         return super.dispatchKeyEvent(event)

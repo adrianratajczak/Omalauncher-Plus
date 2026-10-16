@@ -9,9 +9,13 @@ plugins {
 val uploadKey = rootProject.file("keystore.properties").takeIf { it.exists() }
     ?.let { f -> Properties().apply { f.inputStream().use(::load) } }
 
+// The NDK proot is built with (scripts/fetch-proot.sh); wlbridge uses the same one.
+val prootNdk = rootProject.file("scripts/fetch-proot.sh").readLines().first { it.startsWith("NDK_VERSION=") }.substringAfter('=')
+
 android {
     namespace = "dev.omalauncher"
     compileSdk = 37
+    ndkVersion = prootNdk
 
     defaultConfig {
         applicationId = "dev.omalauncher"
@@ -58,6 +62,12 @@ android {
             signingConfig = signingConfigs.getByName(if (uploadKey != null) "release" else "debug")
         }
     }
+}
+
+// Gitignored, built by scripts/fetch-proot.sh. Without it a release still builds, but every Linux command fails.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    val proot = file("src/main/jniLibs/arm64-v8a/libproot.so")
+    doFirst { check(proot.exists()) { "$proot is missing; run scripts/fetch-proot.sh" } }
 }
 
 composeCompiler {
