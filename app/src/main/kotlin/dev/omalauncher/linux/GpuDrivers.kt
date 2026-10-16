@@ -1,5 +1,10 @@
 package dev.omalauncher.linux
 
+import dev.omalauncher.readUpTo
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
+
 /**
  * The pinned Vulkan drivers [Gpu] can install. Detection and the guest
  * scripts live here, with no Android types, so they can be tested on the JVM.
@@ -119,6 +124,23 @@ internal object GpuDrivers {
 
     /** Removed on the way out. A previous install wrote Mali's manifest on pacman's path. */
     const val LEGACY_MALI_ICD = "/usr/share/vulkan/icd.d/panfrost_icd.aarch64.json"
+
+    /**
+     * Deletes [legacy], the host file of [LEGACY_MALI_ICD], if it is our manifest for [driver]:
+     * a regular file naming its library. Mesa's own Panfrost manifest has that name too.
+     */
+    fun retireLegacyManifest(
+        driver: GpuDriver,
+        legacy: File,
+    ) {
+        if (driver.kind != GpuKind.MALI) return
+        val path = legacy.toPath()
+        val head = runCatching {
+            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return@runCatching null
+            Files.newInputStream(path).use { it.readUpTo(4096).decodeToString() }
+        }.getOrNull()
+        if (head?.contains(driver.driverPath) == true) Files.deleteIfExists(path)
+    }
 
     /**
      * Patched Mesa 26.2.4 (scripts/mesa/0001-egl-wayland-keep-zink-on-shm.patch and 0002-zink-acquire-swapchain-resolve-before-use.patch).
@@ -247,12 +269,7 @@ internal object GpuDrivers {
     private fun writeManifest(driver: GpuDriver): String {
         val icdDir = driver.icdPath.substringBeforeLast('/')
         val icd = """{"file_format_version":"1.0.1","ICD":{"library_path":"${driver.driverPath}","api_version":"${driver.apiVersion}"}}"""
-        val retireLegacy = if (driver.kind == GpuKind.MALI) {
-            "if grep -F -q ${shellQuote(driver.driverPath)} ${shellQuote(LEGACY_MALI_ICD)} 2>/dev/null; then rm -f ${shellQuote(LEGACY_MALI_ICD)}; fi && "
-        } else {
-            ""
-        }
-        return retireLegacy + "mkdir -p ${shellQuote(icdDir)} && printf '%s\\n' ${shellQuote(icd)} > ${shellQuote(driver.icdPath)}"
+        return "mkdir -p ${shellQuote(icdDir)} && printf '%s\\n' ${shellQuote(icd)} > ${shellQuote(driver.icdPath)}"
     }
 
     /**

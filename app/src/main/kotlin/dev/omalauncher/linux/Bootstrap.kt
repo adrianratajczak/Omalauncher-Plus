@@ -3,8 +3,10 @@ package dev.omalauncher.linux
 import android.content.Context
 import android.system.Os
 import android.util.Log
+import dev.omalauncher.CountingInputStream
 import dev.omalauncher.LauncherData
 import dev.omalauncher.httpGet
+import dev.omalauncher.openHttp
 import dev.omalauncher.sha256Hex
 import dev.omalauncher.upgrade.Provisioner
 import dev.omalauncher.upgrade.StepJournal
@@ -17,10 +19,7 @@ import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import java.io.BufferedInputStream
 import java.io.File
-import java.io.FilterInputStream
-import java.io.InputStream
 import java.net.HttpURLConnection
-import java.net.URL
 import java.util.zip.GZIPInputStream
 
 private const val TAG = "bootstrap"
@@ -379,9 +378,24 @@ class Bootstrap(
         val partial = File(context.cacheDir, "$TARBALL.part")
         val validator = File(context.cacheDir, "$TARBALL.version")
         report(Stage.Download, "Downloading Arch Linux ARM", 0f)
-        val conn = URL(ROOTFS_URL).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 30_000
+        val conn = openHttp(ROOTFS_URL)
+        try {
+            download(conn, partial, validator)
+        } finally {
+            conn.disconnect()
+        }
+        // Only a complete download is kept for a retry.
+        check(partial.renameTo(target)) { "can't move the download into place" }
+        validator.delete()
+        return target
+    }
+
+    /** Into [partial], continuing it if the server still has the version [validator] names. Throws if it ends short. */
+    private fun download(
+        conn: HttpURLConnection,
+        partial: File,
+        validator: File,
+    ) {
         val have = if (partial.exists() && validator.exists()) partial.length() else 0L
         if (have > 0) {
             conn.setRequestProperty("Range", "bytes=$have-")
@@ -413,11 +427,7 @@ class Bootstrap(
                 }
             }
         }
-        // Only a complete download is kept for a retry.
         check(total <= 0 || partial.length() == total) { "the download was cut short; retry to continue it" }
-        check(partial.renameTo(target)) { "can't move the download into place" }
-        validator.delete()
-        return target
     }
 
     private fun extract(tarball: File) {
@@ -509,19 +519,4 @@ class Bootstrap(
         val code = proot.run(script) { line -> if (log.add(line)) report(stage, step) }
         check(code == 0) { "`${script.take(60)}` failed (exit $code)" }
     }
-}
-
-private class CountingInputStream(
-    input: InputStream,
-) : FilterInputStream(input) {
-    var count = 0L
-        private set
-
-    override fun read(): Int = super.read().also { if (it >= 0) count++ }
-
-    override fun read(
-        b: ByteArray,
-        off: Int,
-        len: Int,
-    ): Int = super.read(b, off, len).also { if (it > 0) count += it }
 }

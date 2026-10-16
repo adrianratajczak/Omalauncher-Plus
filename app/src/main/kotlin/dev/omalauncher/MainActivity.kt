@@ -56,7 +56,7 @@ class MainActivity : ComponentActivity() {
     private fun requestHomeRole() {
         val roles = getSystemService(RoleManager::class.java)
         if (!roles.isRoleAvailable(RoleManager.ROLE_HOME) || roles.isRoleHeld(RoleManager.ROLE_HOME)) return
-        val prefs = getSharedPreferences("launcher", MODE_PRIVATE)
+        val prefs = LauncherData.prefs(this)
         if (prefs.getBoolean("home_role_asked", false)) return
         prefs.edit().putBoolean("home_role_asked", true).apply()
         @Suppress("DEPRECATION")

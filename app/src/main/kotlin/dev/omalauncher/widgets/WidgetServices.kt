@@ -39,7 +39,9 @@ import dev.omalauncher.linux.GuestShell
 import dev.omalauncher.linux.Proot
 import dev.omalauncher.linux.ShellPool
 import dev.omalauncher.linux.ShellResult
+import dev.omalauncher.openHttp
 import dev.omalauncher.openUrl
+import dev.omalauncher.readUpTo
 import dev.omalauncher.sha256Hex
 import dev.omalauncher.upgrade.writeAtomically
 import dev.omalauncher.widgets.lang.Builtins
@@ -76,8 +78,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
-import java.io.InputStream
-import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
@@ -407,10 +407,8 @@ class WidgetServices(
         withContext(Dispatchers.IO) {
             if (!url.startsWith("https://") && !url.startsWith("http://")) return@withContext ShellResult("", "not an http(s) URL: $url", -1)
             try {
-                val connection = URL(url).openConnection() as HttpURLConnection
+                val connection = openHttp(url, timeoutSeconds * 1000, timeoutSeconds * 1000)
                 try {
-                    connection.connectTimeout = timeoutSeconds * 1000
-                    connection.readTimeout = timeoutSeconds * 1000
                     connection.setRequestProperty("User-Agent", "omalauncher-widgets")
                     headers.forEach { (k, v) -> connection.setRequestProperty(k, v) }
                     if (body != null) {
@@ -422,7 +420,7 @@ class WidgetServices(
                     val code = connection.responseCode
                     val stream = if (code >= 400) connection.errorStream else connection.inputStream
                     // Widgets show a few values; a runaway response mustn't fill memory.
-                    val body = stream?.use { String(readAtMost(it, MAX_HTTP_BYTES), Charsets.UTF_8) }.orEmpty()
+                    val body = stream?.use { String(it.readUpTo(MAX_HTTP_BYTES), Charsets.UTF_8) }.orEmpty()
                     if (code in 200..299) ShellResult(body.trimEnd(), "", code) else ShellResult(body.trimEnd(), connection.responseMessage.orEmpty(), code)
                 } finally {
                     connection.disconnect()
@@ -468,13 +466,11 @@ class WidgetServices(
 
     /** A file's bytes, or null for anything but a 2xx or a response over [MAX_FILE_BYTES]. */
     private fun download(url: String): ByteArray? {
-        val connection = URL(url).openConnection() as HttpURLConnection
+        val connection = openHttp(url, readTimeout = 20_000)
         try {
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 20_000
             connection.setRequestProperty("User-Agent", "omalauncher-widgets")
             if (connection.responseCode !in 200..299) return null
-            return connection.inputStream.use { readAtMost(it, MAX_FILE_BYTES + 1) }.takeIf { it.size <= MAX_FILE_BYTES }
+            return connection.inputStream.use { it.readUpTo(MAX_FILE_BYTES + 1) }.takeIf { it.size <= MAX_FILE_BYTES }
         } finally {
             connection.disconnect()
         }
@@ -593,20 +589,6 @@ class WidgetServices(
                 .build()
         nm.notify(notificationId++, n)
     }
-}
-
-private fun readAtMost(
-    input: InputStream,
-    limit: Int,
-): ByteArray {
-    val out = java.io.ByteArrayOutputStream()
-    val buf = ByteArray(8192)
-    while (out.size() < limit) {
-        val n = input.read(buf, 0, minOf(buf.size, limit - out.size()))
-        if (n < 0) break
-        out.write(buf, 0, n)
-    }
-    return out.toByteArray()
 }
 
 /** An embedded sound, `asset x = base64"..."`, for MediaPlayer. */

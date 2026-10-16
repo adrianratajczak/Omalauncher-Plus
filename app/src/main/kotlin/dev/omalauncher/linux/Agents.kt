@@ -191,12 +191,9 @@ class AgentStore(
         agent: Agent,
         action: String,
         script: () -> String,
-    ): Boolean =
-        withContext(Dispatchers.IO) {
-            states[agent.bin] = JobState.Working(action, emptyList())
-            val (ok, tail) = proot.runJob(script()) { states[agent.bin] = JobState.Working(action, it) }
-            Log.i("agents", "$action ${agent.bin}: ${if (ok) "ok" else "failed"}")
-            states[agent.bin] = if (ok) JobState.Idle else JobState.Failed(tail.toList())
-            ok
-        }
+    ): Boolean {
+        val (ok, _) = proot.trackedJob(action, withContext(Dispatchers.IO) { script() }) { states[agent.bin] = it }
+        Log.i("agents", "$action ${agent.bin}: ${if (ok) "ok" else "failed"}")
+        return ok
+    }
 }

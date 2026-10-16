@@ -1,6 +1,7 @@
 package dev.omalauncher
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.system.Os
 import android.system.OsConstants
 import java.io.File
@@ -32,6 +33,9 @@ object LauncherData {
 
     /** style.toml and its defaults; see [dev.omalauncher.theme.StyleStore]. The guest sees ~/.config/omalauncher/style. */
     fun styleDir(context: Context) = File(context.filesDir, "style")
+
+    /** Settings that belong to no one store: setup, gestures, the GPU, the home role. Keys carry their owner's prefix. */
+    fun prefs(context: Context): SharedPreferences = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
 
     /** Manifest of the launcher-side [dev.omalauncher.upgrade.Provisioner]; the guest's is managed.json. */
     const val LAUNCHER_MANIFEST = "launcher-managed.json"

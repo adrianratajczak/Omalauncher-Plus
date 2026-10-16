@@ -524,39 +524,50 @@ private fun Detail(
             busy != null -> BasicText(busy, style = Mono.copy(color = Palette.accent))
             !e.supported -> BasicText("needs a newer launcher (owl ${e.owl}); update the launcher to install it", style = Mono.copy(color = Palette.red, fontSize = TextSize.Small))
             update -> BracketAction("update ${installed?.version} → ${e.version}", Palette.accent, onInstall)
-            installed != null -> BasicText(if (market.kind == OwlKind.App) "✓ in your app drawer" else "✓ on your home screen", style = Mono.copy(color = Palette.green))
+            installed != null -> AddedMark(market.kind == OwlKind.App)
             else -> BracketAction(if (market.kind == OwlKind.App) "install" else "add to page $page", Palette.accent, onInstall)
         }
         message?.let { BasicText(it, style = Mono.copy(color = Palette.red, fontSize = TextSize.Small)) }
-        if (!linux && e.needsLinux) {
-            BasicText(
-                if (market.kind == OwlKind.App) {
-                    "needs Linux: it runs commands in Arch, so it shows in the app drawer once you install Linux in settings"
-                } else {
-                    "needs Linux: it runs commands in Arch, so it waits as a placeholder until you install Linux in settings"
-                },
-                style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
-            )
-        }
+        if (!linux && e.needsLinux) NeedsLinuxNote(market.kind == OwlKind.App)
 
-        // What it installs and runs, before it's added.
         Spacer(Modifier.height(4.dp))
-        val packages = e.requires.entries.joinToString("; ") { (m, l) -> "$m: ${l.joinToString(", ")}" }.ifEmpty { "none" }
-        BasicText("installs packages: $packages", style = Mono.copy(fontSize = TextSize.Small))
-        if (market.changedSinceApproval(e)) {
-            BasicText("its commands or packages changed since the version you approved", style = Mono.copy(color = Palette.red, fontSize = TextSize.Small))
-        }
-        BasicText(if (e.commands.isEmpty()) "runs no commands" else "runs these commands in Arch:", style = Mono.copy(fontSize = TextSize.Small))
-        for (c in e.commands) {
-            BasicText(
-                c.trimEnd(),
-                Modifier
-                    .fillMaxWidth()
-                    .background(Palette.surface)
-                    .horizontalScroll(rememberScrollState())
-                    .padding(6.dp),
-                style = Mono.copy(fontSize = TextSize.Small),
-            )
+        InstallDisclosure(e.requires, e.commands) {
+            if (market.changedSinceApproval(e)) {
+                BasicText("its commands or packages changed since the version you approved", style = Mono.copy(color = Palette.red, fontSize = TextSize.Small))
+            }
         }
     }
+}
+
+/** Where an added widget or app went. */
+@Composable
+internal fun AddedMark(app: Boolean) = BasicText(if (app) "✓ in your app drawer" else "✓ on your home screen", style = Mono.copy(color = Palette.green))
+
+/** Why one that runs commands in Arch doesn't work yet, and where it waits meanwhile. */
+@Composable
+internal fun NeedsLinuxNote(app: Boolean) =
+    BasicText(
+        if (app) {
+            "needs Linux: it runs commands in Arch, so it shows in the app drawer once you install Linux in settings"
+        } else {
+            "needs Linux: it runs commands in Arch, so it waits as a placeholder until you install Linux in settings"
+        },
+        style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
+    )
+
+/**
+ * What a widget or app installs and runs, shown before it's added: the store's
+ * entries and shared links say it the same way. [notice] goes between the two.
+ */
+@Composable
+internal fun InstallDisclosure(
+    requires: Map<String, List<String>>,
+    commands: List<String>,
+    notice: @Composable () -> Unit = {},
+) {
+    val packages = requires.entries.joinToString("; ") { (m, l) -> "$m: ${l.joinToString(", ")}" }.ifEmpty { "none" }
+    BasicText("installs packages: $packages", style = Mono.copy(fontSize = TextSize.Small))
+    notice()
+    BasicText(if (commands.isEmpty()) "runs no commands" else "runs these commands in Arch:", style = Mono.copy(fontSize = TextSize.Small))
+    for (c in commands) CodeBlock(c.trimEnd())
 }

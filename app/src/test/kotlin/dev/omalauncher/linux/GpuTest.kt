@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
+import kotlin.io.path.createTempDirectory
 
 class GpuTest {
     @Test fun noNodeMeansNoDriver() {
@@ -47,6 +50,26 @@ class GpuTest {
         assertTrue(SOFTWARE_ENV.none { line -> icds.any { line.endsWith(it) } })
     }
 
+    @Test fun retiresOnlyOurOldMaliManifest() {
+        val dir = createTempDirectory().toFile()
+        val mali = GpuDrivers.of(GpuKind.MALI)
+        val ours = File(dir, "ours.json").apply { writeText("""{"ICD":{"library_path":"${mali.driverPath}"}}""") }
+        val mesas = File(dir, "mesa.json").apply { writeText("""{"ICD":{"library_path":"/usr/lib/libvulkan_panfrost.so"}}""") }
+        GpuDrivers.retireLegacyManifest(mali, ours)
+        GpuDrivers.retireLegacyManifest(mali, mesas)
+        assertFalse(ours.exists())
+        assertTrue(mesas.exists())
+        // A link is left alone: its target isn't ours to delete.
+        val link = File(dir, "link.json").toPath()
+        Files.createSymbolicLink(link, File(dir, "target.json").apply { writeText(mali.driverPath) }.toPath())
+        GpuDrivers.retireLegacyManifest(mali, link.toFile())
+        assertTrue(Files.isSymbolicLink(link))
+        // Turnip never wrote one there.
+        GpuDrivers.retireLegacyManifest(GpuDrivers.of(GpuKind.TURNIP), mesas.apply { writeText(mali.driverPath) })
+        assertTrue(mesas.exists())
+        dir.deleteRecursively()
+    }
+
     @Test fun maliScriptStaysThePinnedPanvkBlob() {
         val driver = GpuDrivers.of(GpuKind.MALI)
         val script = GpuDrivers.installScript(driver)
@@ -55,8 +78,6 @@ class GpuTest {
         assertTrue(script.contains("0b8eaf709cd3559acec72b6fcf3acc24bcdb016bdc998adfedca6ff8eb60c820  /tmp/omalauncher-gpu.so"))
         assertTrue(script.contains("\"api_version\":\"1.4.363\""))
         assertTrue(script.contains("> '/usr/local/share/vulkan/icd.d/panfrost_icd.aarch64.json'"))
-        assertTrue(script.contains("grep -F -q '/usr/local/lib64/libvulkan_panfrost.so' '/usr/share/vulkan/icd.d/panfrost_icd.aarch64.json'"))
-        assertTrue(script.contains("rm -f '/usr/share/vulkan/icd.d/panfrost_icd.aarch64.json'"))
         assertTrue(trapCoversCurl(script))
         assertFalse(script.contains("/tmp/panvk.so"))
         assertFalse(script.contains("turnip"))

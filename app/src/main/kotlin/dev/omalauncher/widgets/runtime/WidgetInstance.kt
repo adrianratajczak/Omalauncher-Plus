@@ -63,7 +63,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.cancelChildren
 import java.io.File
 
 /** What widgets need from the launcher: guest commands, Android data and actions. */

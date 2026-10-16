@@ -29,7 +29,6 @@ import dev.omalauncher.linux.LinuxApp
 import dev.omalauncher.linux.OpenBridge
 import dev.omalauncher.linux.Pacman
 import dev.omalauncher.linux.Proot
-import dev.omalauncher.linux.LinuxState
 import dev.omalauncher.linux.SystemUpdates
 import dev.omalauncher.linux.TerminalFont
 import dev.omalauncher.linux.bundledIcons
@@ -133,7 +132,7 @@ class Runtime(
     private var started = false
     private var prepared = false
 
-    private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    private val prefs = LauncherData.prefs(context)
 
     /**
      * The first-run screen is done: from then on the home screen shows, with

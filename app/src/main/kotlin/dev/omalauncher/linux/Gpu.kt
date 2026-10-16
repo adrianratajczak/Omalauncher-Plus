@@ -6,14 +6,10 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import dev.omalauncher.readUpTo
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
+import dev.omalauncher.LauncherData
+import kotlinx.coroutines.sync.Mutex
 import java.io.File
 import java.io.FileNotFoundException
-import java.nio.file.Files
-import java.nio.file.LinkOption
 
 /**
  * Opt-in GPU acceleration for Linux apps. The device node picks the driver:
@@ -32,7 +28,7 @@ class Gpu(
     private val proot: Proot,
     private val pacman: Pacman,
 ) {
-    private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    private val prefs = LauncherData.prefs(context)
 
     /** The pinned driver for this phone, or null when we have none. */
     private val spec: GpuDriver? = gpuKind(
@@ -73,18 +69,21 @@ class Gpu(
     suspend fun recheck() {
         val driver = spec ?: return
         if (!wanted || active || state is JobState.Working) return
-        if (!guestFile(driver.driverPath).isFile) return turnOff()
+        if (!proot.hostFile(driver.driverPath).isFile) return turnOff()
         // The APK carries a different Mesa than the guest has, or none was installed
         // yet (Mali before it used the patched Mesa). The env names that Mesa.
-        val mesaCurrent = runCatching { guestFile(GpuDrivers.MESA_ZINK_STAMP).readText().trim() }
+        val mesaCurrent = runCatching { proot.hostFile(GpuDrivers.MESA_ZINK_STAMP).readText().trim() }
             .getOrNull() == GpuDrivers.MESA_ZINK_TAR_SHA256
         if (mesaCurrent && prefs.getString(CHECKED_BUILD, null) == build) {
             // An older install wrote Mali's manifest on pacman's path. The env now
             // names the /usr/local file, so that file has to exist before we activate.
-            if (!guestFile(driver.icdPath).isFile && !run("installing", GpuDrivers.manifestScript(driver))) {
-                proot.graphicsEnv = SOFTWARE_ENV
-                conceal(driver)
-                return
+            if (!proot.hostFile(driver.icdPath).isFile) {
+                retireLegacyManifest(driver)
+                if (!run("installing", GpuDrivers.manifestScript(driver))) {
+                    proot.graphicsEnv = SOFTWARE_ENV
+                    conceal(driver)
+                    return
+                }
             }
             return activate(driver)
         }
@@ -112,10 +111,10 @@ class Gpu(
         prefs.edit().putBoolean(WANTED, true).apply()
         wanted = true
         stageMesaBundle()
+        retireLegacyManifest(driver)
         val script = GpuDrivers.installScript(driver) + " && " + GpuDrivers.probeScript(driver)
         // The install script runs pacman.
-        state = JobState.Working("waiting", emptyList())
-        if (pacman.lock.withLock { run("installing", script) }) {
+        if (run("installing", script, pacman.lock)) {
             activate(driver)
         } else {
             // Nothing to come back to on the next start; the failure stays on screen.
@@ -148,23 +147,19 @@ class Gpu(
 
     /** Drops the manifest so a later app cannot load the driver by the default search path. */
     private fun conceal(driver: GpuDriver) {
-        guestFile(driver.icdPath).delete()
-        if (driver.kind == GpuKind.MALI) {
-            val legacy = guestFile(GpuDrivers.LEGACY_MALI_ICD).toPath()
-            val head = runCatching {
-                if (!Files.isRegularFile(legacy, LinkOption.NOFOLLOW_LINKS)) return@runCatching null
-                Files.newInputStream(legacy).use { it.readUpTo(4096).decodeToString() }
-            }.getOrNull()
-            if (head?.contains(driver.driverPath) == true) Files.deleteIfExists(legacy)
-        }
+        proot.hostFile(driver.icdPath).delete()
+        retireLegacyManifest(driver)
     }
+
+    /** Before writing the /usr/local manifest, and on the way out. */
+    private fun retireLegacyManifest(driver: GpuDriver) = GpuDrivers.retireLegacyManifest(driver, proot.hostFile(GpuDrivers.LEGACY_MALI_ICD))
 
     /**
      * The patched Mesa tar (scripts/mesa/build-aarch64.sh) is in the APK's assets.
      * A build without that asset leaves the install script to fail closed on the missing file.
      */
     private fun stageMesaBundle() {
-        val dest = guestFile(GpuDrivers.MESA_ZINK_BUNDLE)
+        val dest = proot.hostFile(GpuDrivers.MESA_ZINK_BUNDLE)
         val input = try {
             context.assets.open("mesa-zink/mesa-zink.tar.xz")
         } catch (_: FileNotFoundException) {
@@ -174,27 +169,21 @@ class Gpu(
         input.use { src -> dest.outputStream().use { src.copyTo(it) } }
     }
 
-    private fun guestFile(path: String) = File(proot.rootfs, path.removePrefix("/"))
-
     /** Runs [script]; on success remembers the build it passed on and the GPU's name from vulkaninfo. */
     private suspend fun run(
         action: String,
         script: String,
-    ): Boolean =
-        withContext(Dispatchers.IO) {
-            state = JobState.Working(action, emptyList())
-            val (ok, tail) = proot.runJob(script) { state = JobState.Working(action, it) }
-            val name = tail.toList().firstNotNullOfOrNull { DEVICE_NAME.find(it)?.groupValues?.get(1) }
-            Log.i(TAG, "$action: ${if (ok) "ok, $name" else "failed"}")
-            if (ok) {
-                device = name
-                prefs.edit().putString(CHECKED_BUILD, build).putString(DEVICE, name).apply()
-                state = JobState.Idle
-            } else {
-                state = JobState.Failed(tail.toList())
-            }
-            ok
+        lock: Mutex? = null,
+    ): Boolean {
+        val (ok, tail) = proot.trackedJob(action, script, lock) { state = it }
+        val name = tail.toList().firstNotNullOfOrNull { DEVICE_NAME.find(it)?.groupValues?.get(1) }
+        Log.i(TAG, "$action: ${if (ok) "ok, $name" else "failed"}")
+        if (ok) {
+            device = name
+            prefs.edit().putString(CHECKED_BUILD, build).putString(DEVICE, name).apply()
         }
+        return ok
+    }
 
     companion object {
         private const val TAG = "gpu"

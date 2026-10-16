@@ -8,7 +8,6 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,7 +48,6 @@ import dev.omalauncher.BuildConfig
 import dev.omalauncher.openUrl
 import dev.omalauncher.widgets.Market
 import dev.omalauncher.widgets.WidgetSpec
-import dev.omalauncher.widgets.lang.OwlKind
 import dev.omalauncher.widgets.market.Catalog
 import dev.omalauncher.widgets.market.Review
 import dev.omalauncher.widgets.market.Paste
@@ -107,11 +105,7 @@ fun ShareWidgetScreen(
                     if (showSource) BracketAction("check for secrets with agent", Palette.accent, onCheck)
                 }
                 if (showSource) {
-                    BasicText(
-                        text,
-                        Modifier.fillMaxWidth().background(Palette.surface).horizontalScroll(rememberScrollState()).padding(6.dp),
-                        style = Mono.copy(fontSize = TextSize.Small),
-                    )
+                    CodeBlock(text)
                 }
             }
             when {
