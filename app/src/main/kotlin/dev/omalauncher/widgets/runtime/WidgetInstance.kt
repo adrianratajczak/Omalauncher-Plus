@@ -56,6 +56,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.cancelChildren
 import java.io.File
 
 /** What widgets need from the launcher: guest commands, Android data and actions. */
@@ -628,14 +629,25 @@ class WidgetInstance(
                             else -> {
                                 val seen = refreshes.value
                                 val start = System.currentTimeMillis()
+                                // The command or URL as it runs now; one built from state runs again once it changes.
+                                val built = g.arg?.takeIf { g.kind == "cmd" || g.kind == "http" }
+                                val ran = built?.let { eval(it, root, g.name) }
                                 update(slot, g)
                                 // An interval of NaN ("NaN" is a number) would be 0: a % by zero for a clock, a busy loop otherwise.
                                 val wait = (g.every * 1000).toLong().coerceAtLeast(100)
                                 // Clocks tick on the second (or minute) boundary so displays change in step;
                                 // other intervals count from the start of the update, however long it took.
                                 val target = if (g.kind == "clock") wait - System.currentTimeMillis() % wait else (start + wait - System.currentTimeMillis()).coerceAtLeast(0)
-                                // Sleeps until the interval is up, or a refresh() wakes it early.
-                                withTimeoutOrNull(target) { refreshes.first { it != seen } }
+                                // Sleeps until the interval is up, a refresh() wakes it early, or what it runs changes.
+                                withTimeoutOrNull(target) {
+                                    select {
+                                        launch { refreshes.first { it != seen } }.onJoin {}
+                                        if (built != null) launch { snapshotFlow { eval(built, root, g.name) }.first { it != ran } }.onJoin {}
+                                    }
+                                    coroutineContext.cancelChildren()
+                                }
+                                // A command built from something that changes all the time runs at most once a second.
+                                if (built != null) delay((start + MIN_RERUN_MS - System.currentTimeMillis()).coerceAtLeast(0))
                             }
                         }
                     }
@@ -948,6 +960,9 @@ class WidgetInstance(
 
         /** How often guest image files are checked for changes when no guest command ran. */
         private const val IMAGE_RECHECK_MS = 5_000L
+
+        /** The least time between two runs of a source whose command or URL is built from state. */
+        private const val MIN_RERUN_MS = 1_000L
 
         /** Runs per trigger per second before it's held back. */
         private const val MAX_TRIGGER_RUNS = 10

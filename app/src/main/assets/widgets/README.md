@@ -104,8 +104,8 @@ add `status`: then `x.out` is the output (parsed with `json`), `x.err` is stderr
 source w = cmd("curl -sf wttr.in/?format=j1") every 30m json timeout 20s status
 Text { text: w == null ? "…" : w.ok ? "${w.out.current_condition[0].temp_C}°" : "offline" }
 ``` Keep commands fast. A command
-can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and re-runs with the new
-value at its next interval.
+can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and runs again as soon as the
+value changes (at most once a second), without waiting for its interval or a `refresh()`.
 
 ## Values in commands
 
