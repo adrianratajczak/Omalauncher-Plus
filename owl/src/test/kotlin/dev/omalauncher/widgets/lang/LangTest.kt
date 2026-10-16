@@ -770,6 +770,28 @@ class LangTest {
         assertEquals(listOf("jq"), Compiler.compile("widget {\n meta { owl: 6 }\n state v = \"x\"\n onTap: run(\"jq -n ${'$'}{sh(v)}\")\n Text { text: v } }").programs.toList())
     }
 
+    @Test fun encEncodesAValueAsOneUrlComponent() {
+        val owl8 = "meta { owl: 8 }"
+        assertEquals("a%20b%2Fc%3Fd%26e%23f%3Dg", text("enc(\"a b/c?d&e#f=g\")", owl8))
+        assertEquals("%C3%BC", text("enc(\"ü\")", owl8))
+        assertEquals("", text("enc(null)", owl8))
+        assertEquals("3", text("enc(3)", owl8))
+        assertTrue(compileError("widget {\n meta { owl: 7 }\n Text { text: enc(\"x\") } }").contains("enc needs owl 8"))
+    }
+
+    @Test fun urlsWithEncodedValuesAreListedAsTemplates() {
+        fun commands(url: String) = Compiler.compile("widget {\n meta { owl: 8 }\n state v = \"x\"\n state n = 1\n source s = http($url) json\n Text { text: v } }").commands
+        val v = Compiler.VALUE
+        assertEquals(listOf("http GET https://a.b/c/$v?d=${Compiler.NUMBER}"), commands("\"https://a.b/c/${'$'}{enc(v)}?d=${'$'}{int(n)}\""))
+        // A null branch pauses the source: nothing to list for it.
+        assertEquals(listOf("http GET https://a.b/q?x=$v"), commands("n > 1 ? \"https://a.b/q?x=\" + enc(v) : null"))
+        assertEquals(listOf("http GET https://a.b/1", "http GET http://c.d:8080/2"), commands("n > 1 ? \"https://a.b/1\" : \"http://c.d:8080/2\""))
+        // A value in the host, or not through enc(...), could send it anywhere.
+        for (bad in listOf("\"https://${'$'}{enc(v)}/x\"", "\"https://a.b${'$'}{enc(v)}/x\"", "\"https://a.b/${'$'}{v}\"", "\"https://a.b/${'$'}{sh(v)}\"", "\"${'$'}{enc(v)}\"", "n > 1 ? null : null")) {
+            assertEquals(bad, listOf("http GET (a URL built from widget values)"), commands(bad))
+        }
+    }
+
     @Test fun fmtTimeFollowsLanguageChanges() {
         val was = Locale.getDefault()
         try {
