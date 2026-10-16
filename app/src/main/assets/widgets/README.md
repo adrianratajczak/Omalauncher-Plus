@@ -398,7 +398,8 @@ app "recipes" {
 ```
 
 An app is listed in the app drawer (under apps, and in search) by its name. Tapping it opens
-it in its own window, with its own card in recent apps, its `title` (or name) and a ✕; `close()` closes it.
+it in its own window, with its own card in recent apps and its `title` (or name). Like any Android app,
+Back leaves it and swiping its card away in recent apps closes it; `close()` closes it too.
 Long-press it in the drawer to add it to home, like any app.
 
 **Icon.** `icon` is the app's icon in the drawer, on home and in recent apps. It's fixed in the

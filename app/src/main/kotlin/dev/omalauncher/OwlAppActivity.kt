@@ -63,7 +63,8 @@ class OwlAppActivity : InstantActivity() {
             val goUp: () -> Unit = { inst.program.onBack?.run(inst.root, emptyList()) }
             BackHandler { if (up) goUp() else backInstantly() }
             Box(Modifier.fillMaxSize().background(Palette.background).safeDrawingPadding().padding(PanelGap)) {
-                PanelFrame(onClose = ::closeInstantly, title = { BackTitle(title, if (up) goUp else null) }) {
+                // No ✕: Back leaves the app and Recents closes it, as with any Android app; close() still does.
+                PanelFrame(onClose = null, title = { BackTitle(title, if (up) goUp else null) }) {
                     CompositionLocalProvider(LocalInputFocus provides true) {
                         WidgetScreen(inst, Modifier.weight(1f).fillMaxWidth())
                     }

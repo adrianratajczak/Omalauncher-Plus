@@ -79,7 +79,8 @@ fun OverlayPanel(
 /** [OverlayPanel]'s frame without the scrim, for a screen of its own (Files): [title] fills the header up to the [actions] and close mark. */
 @Composable
 fun PanelFrame(
-    onClose: () -> Unit,
+    /** The ✕; null for a window Android closes (Back, Recents), like an owl app's. */
+    onClose: (() -> Unit)?,
     modifier: Modifier = Modifier,
     title: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
@@ -95,7 +96,7 @@ fun PanelFrame(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { title() }
             actions()
-            Symbol(Glyph.Close, Palette.red, Modifier.clickable(onClick = onClose).padding(8.dp), TextSize.Title)
+            if (onClose != null) Symbol(Glyph.Close, Palette.red, Modifier.clickable(onClick = onClose).padding(8.dp), TextSize.Title)
         }
         Spacer(Modifier.height(8.dp))
         if (contentWidth == Dp.Unspecified) {
