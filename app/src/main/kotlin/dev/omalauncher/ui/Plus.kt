@@ -55,6 +55,14 @@ object PlusPrefs {
     var drawerAlignRight by mutableStateOf(false)
         private set
 
+    /** Shows the recent apps strip on home; off hides it everywhere. */
+    var showRecents by mutableStateOf(true)
+        private set
+
+    /** App keys hidden from the recent strip by long-press; shown again from Plus. */
+    var recentHidden: Set<String> by mutableStateOf(emptySet())
+        private set
+
     /** Reads the saved Plus settings; called once when the launcher starts. */
     fun load(context: Context) {
         val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
@@ -74,6 +82,8 @@ object PlusPrefs {
             }
         widgetBlur = prefs.getBoolean(WIDGET_BLUR, false)
         drawerAlignRight = prefs.getBoolean(DRAWER_ALIGN_RIGHT, false)
+        showRecents = prefs.getBoolean(SHOW_RECENTS, true)
+        recentHidden = prefs.getStringSet(RECENT_HIDDEN, emptySet()).orEmpty().toSet()
         // An earlier Plus saved a scale (0 theme-edge .. 2 full); a scale step is 16px of radius.
         val saved = prefs.getFloat(CORNERS, -1f)
         cornerPx = if (saved < 0f) null else (if (saved <= 2f) saved * 16f else saved).coerceIn(0f, 60f)
@@ -193,6 +203,25 @@ object PlusPrefs {
         context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(DRAWER_ALIGN_RIGHT, right).apply()
     }
 
+    /** Shows or hides the recent apps strip and saves it; home redraws itself. */
+    fun setShowRecents(
+        context: Context,
+        show: Boolean,
+    ) {
+        showRecents = show
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(SHOW_RECENTS, show).apply()
+    }
+
+    /** Hides an app from the recent strip (or shows it again) and saves it. */
+    fun setRecentHidden(
+        context: Context,
+        key: String,
+        hidden: Boolean,
+    ) {
+        recentHidden = if (hidden) recentHidden + key else recentHidden - key
+        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putStringSet(RECENT_HIDDEN, recentHidden).apply()
+    }
+
     private const val HIDE_LINUX = "plus_hide_linux_notification"
     private const val CORNERS = "plus_corners"
     private const val HIDE_LABELS = "plus_hide_labels"
@@ -204,4 +233,6 @@ object PlusPrefs {
     private const val ADAPTIVE_BACKGROUND = "plus_adaptive_background"
     private const val WIDGET_BLUR = "plus_widget_blur"
     private const val DRAWER_ALIGN_RIGHT = "plus_drawer_align_right"
+    private const val SHOW_RECENTS = "plus_show_recents"
+    private const val RECENT_HIDDEN = "plus_recent_hidden"
 }

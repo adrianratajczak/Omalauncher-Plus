@@ -264,7 +264,7 @@ private fun DesktopScreen(
             if (runtime.terminals.active == null || runtime.terminals.keyboardLeaving) {
                 // Home only: the open app list has everything.
                 // Swiping up from either does what it does on home, as from the dock on stock launchers.
-                if (LauncherStyle.recentApps && !panelShown) RecentStrip(runtime, handlers, Modifier.homeSwipe(runtime, state))
+                if (showRecents() && !panelShown) RecentStrip(runtime, handlers, Modifier.homeSwipe(runtime, state))
                 // Insets itself by the grid gap, so it lines up with the tiles and the gap still takes taps.
                 PromptBar(runtime, state, search = search, highlighted = highlighted, onLaunch = handlers.launch, onWeb = ::searchWeb, onStore = ::searchStore, modifier = Modifier.homeSwipe(runtime, state))
             }

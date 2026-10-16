@@ -41,7 +41,8 @@ import dev.omalauncher.Runtime
 
 /**
  * Omalauncher+'s own settings, in one place so they never collide with
- * upstream's: icons, labels, search, the Linux notification, and corners.
+ * upstream's: icons, home, drawer, labels, search, widgets, notifications,
+ * and corners.
  */
 @Composable
 fun PlusScreen(
@@ -169,6 +170,17 @@ fun PlusScreen(
                     }
                 }
             }
+            item(key = "home-label") {
+                SectionLabel("home", Modifier.padding(start = 8.dp, top = 6.dp))
+            }
+            item(key = "show-recents") {
+                PlusSwitch(
+                    title = "recent apps",
+                    subtitle = "the strip above the bar · off hides it everywhere",
+                    on = PlusPrefs.showRecents,
+                    onToggle = { PlusPrefs.setShowRecents(context, !PlusPrefs.showRecents) },
+                )
+            }
             item(key = "labels-label") {
                 SectionLabel("labels", Modifier.padding(start = 8.dp, top = 6.dp))
             }
@@ -190,6 +202,31 @@ fun PlusScreen(
                     on = PlusPrefs.drawerAlignRight,
                     onToggle = { PlusPrefs.setDrawerAlignRight(context, !PlusPrefs.drawerAlignRight) },
                 )
+            }
+            item(key = "drawer-hidden-label") {
+                SectionLabel("hidden from recents", Modifier.padding(start = 8.dp, top = 6.dp))
+            }
+            run {
+                val hidden = PlusPrefs.recentHidden.sorted()
+                if (hidden.isEmpty()) {
+                    item(key = "drawer-hidden-empty") {
+                        BasicText(
+                            "nothing hidden · long-press a recent app to hide it",
+                            Modifier.padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
+                            style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
+                        )
+                    }
+                } else {
+                    hidden.forEach { key ->
+                        item(key = "drawer-hidden:$key") {
+                            PlusRow(
+                                appHitByKey(runtime, key)?.label ?: key,
+                                "tap to show in recents again",
+                                onClick = { PlusPrefs.setRecentHidden(context, key, false) },
+                            )
+                        }
+                    }
+                }
             }
             item(key = "search-label") {
                 SectionLabel("search", Modifier.padding(start = 8.dp, top = 6.dp))

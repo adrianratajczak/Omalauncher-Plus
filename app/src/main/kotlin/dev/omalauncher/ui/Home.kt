@@ -355,7 +355,7 @@ fun HomeScreen(
             },
             // The recent apps strip's room: kept while it's empty, so tiles don't reflow when it fills, and still
             // home's to swipe and long-press there until it does.
-            room = if (LauncherStyle.recentApps && side == null) RecentStripHeight else 0.dp,
+            room = if (showRecents() && side == null) RecentStripHeight else 0.dp,
             turned = turned,
             side = side,
             per = per,

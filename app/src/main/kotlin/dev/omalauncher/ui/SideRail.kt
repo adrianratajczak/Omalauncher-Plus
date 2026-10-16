@@ -97,7 +97,7 @@ internal fun showsTwoPages(window: IntSize) = window.width / 2f / window.height 
 internal fun sideWidth(): Dp =
     with(LocalDensity.current) {
         val gap = HomeGap.roundToPx()
-        ((if (LauncherStyle.recentApps) RecentStripHeight.roundToPx() + gap else 0) + PromptBarHeight.roundToPx() + EdgeGap.roundToPx()).toDp()
+        ((if (showRecents()) RecentStripHeight.roundToPx() + gap else 0) + PromptBarHeight.roundToPx() + EdgeGap.roundToPx()).toDp()
     }
 
 /**
@@ -118,7 +118,7 @@ internal fun SideRail(
         horizontalArrangement = if (side == HomeSide.Left) Arrangement.Start else Arrangement.End,
     ) {
         // Outward from the grid, like portrait from the grid down: the strip, then the bar.
-        val strip = @Composable { if (LauncherStyle.recentApps) RecentStrip(runtime, handlers, vertical = true) }
+        val strip = @Composable { if (showRecents()) RecentStrip(runtime, handlers, vertical = true) }
         if (side == HomeSide.Left) {
             Spacer(Modifier.width(EdgeGap))
             PromptRail(runtime, state)

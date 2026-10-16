@@ -16,6 +16,7 @@ import kotlin.math.abs
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -205,6 +206,15 @@ internal class BarSearch(
 
 private fun allApps(runtime: Runtime): List<AppHit> =
     runtime.linuxApps.map { AppHit.Linux(it) } + runtime.androidApps.apps.map { AppHit.Android(it) } + runtime.androidApps.shortcuts.map { AppHit.Shortcut(it) }
+
+/** One app by its usage key, for the hidden-recents list; null when not installed. */
+internal fun appHitByKey(
+    runtime: Runtime,
+    key: String,
+): AppHit? = allApps(runtime).firstOrNull { it.key == key }
+
+/** The recent strip shows when the theme allows it and Plus hasn't hidden it. */
+internal fun showRecents(): Boolean = LauncherStyle.recentApps && PlusPrefs.showRecents
 
 internal fun searchApps(
     runtime: Runtime,
@@ -486,6 +496,7 @@ internal fun RecentStrip(
         Spacer(if (vertical) modifier.width(RecentStripHeight) else modifier.height(RecentStripHeight))
         return
     }
+    val context = LocalContext.current
     val bare = LauncherStyle.bareAppIcons
     val listState = rememberLazyListState()
     // Back on home, the strip starts at the app opened last, wherever it was scrolled to before.
@@ -499,7 +510,7 @@ internal fun RecentStrip(
         val cells: LazyListScope.() -> Unit = {
             items(apps, key = { it.key }) { hit ->
                 val (icon, mask) = hit.icons(runtime)
-                StripCell(hit.label, icon, mask, onClick = { handlers.launch(hit) }, actions = { hit.actions(handlers) }, shortcuts = { hit.shortcutMenu(handlers) }, spoken = hit.spoken, paused = hit.paused(runtime))
+                StripCell(hit.label, icon, mask, onClick = { handlers.launch(hit) }, actions = { hit.actions(handlers) + ("hide from recents" to { PlusPrefs.setRecentHidden(context, hit.key, true) }) }, shortcuts = { hit.shortcutMenu(handlers) }, spoken = hit.spoken, paused = hit.paused(runtime))
             }
         }
         if (vertical) {
@@ -563,13 +574,14 @@ private fun StripCell(
     }
 }
 
-/** The apps opened lately, last opened first; ones not installed (or not loaded yet) are skipped. */
+/** The apps opened lately, last opened first; hidden ones and ones not installed (or not loaded yet) are skipped. */
 private fun recentApps(
     runtime: Runtime,
     limit: Int,
 ): List<AppHit> {
     val byKey = allApps(runtime).associateBy { it.key }
-    return runtime.usage.recent.mapNotNull { byKey[it] }.take(limit)
+    val hidden = PlusPrefs.recentHidden
+    return runtime.usage.recent.filter { it !in hidden }.mapNotNull { byKey[it] }.take(limit)
 }
 
 /**
