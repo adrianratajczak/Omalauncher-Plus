@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import dev.omalauncher.linux.JobState
 /**
  * A full-screen framed panel with a title, optional [actions] and a close button: themes, agents, the store.
  * With a [contentWidth], a wide screen centers the content at that width; the frame and title still span the panel.
+ * With [onBack], or a [LocalPanelBack] around it, the title is a [BackTitle] in place of the close mark.
  */
 @Composable
 fun OverlayPanel(
@@ -54,6 +56,7 @@ fun OverlayPanel(
     onDismiss: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
     contentWidth: Dp = Dp.Unspecified,
+    onBack: (() -> Unit)? = LocalPanelBack.current,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(
@@ -65,11 +68,22 @@ fun OverlayPanel(
             .padding(PanelGap),
     ) {
         PanelFrame(
-            onClose = onDismiss,
+            onClose = onDismiss.takeIf { onBack == null },
             // Taps inside the panel don't reach the scrim behind it.
             modifier = Modifier.pointerInput(Unit) { detectTapGestures { } },
-            title = { PanelTitle(title) },
-            actions = actions,
+            title = { BackTitle(title, onBack) },
+            actions = {
+                actions()
+                // Without the ✕, one unseen and no wide keeps the header its usual height, so the title stays where it was.
+                if (onBack != null) {
+                    Symbol(
+                        Glyph.Close,
+                        Color.Transparent,
+                        Modifier.layout { m, c -> m.measure(c).let { p -> layout(0, p.height) {} } }.padding(8.dp),
+                        TextSize.Title,
+                    )
+                }
+            },
             contentWidth = contentWidth,
             content = content,
         )
@@ -110,6 +124,9 @@ fun PanelFrame(
 /** A panel's title, in the accent color. */
 @Composable
 fun PanelTitle(text: String) = BasicText(text, style = Mono.copy(color = Palette.accent, fontSize = TextSize.Title), maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+/** The way back to the screen under an [OverlayPanel], for one opened from another (a settings page from settings); null for one on its own. */
+val LocalPanelBack = compositionLocalOf<(() -> Unit)?> { null }
 
 /** A [PanelTitle] that, with [onBack], has a back chevron before it; the chevron and the title both go back. */
 @Composable

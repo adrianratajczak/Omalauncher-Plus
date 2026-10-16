@@ -44,7 +44,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
@@ -86,71 +85,79 @@ fun StoreScreen(
     val filters = remember { OwlKind.entries.associateWith { StoreFilter() } }
     val filter = filters.getValue(kind)
     LaunchedEffect(market) { market.refresh() }
-    OverlayPanel(
-        "store",
-        onDismiss,
-        actions = {
-            KindToggle(kind) {
-                kind = it
-                open = null
-                message = null
-            }
-            RefreshButton(market.loading) { scope.launch { market.refresh() } }
-        },
-    ) {
-        BoxWithConstraints {
-            val wide = maxWidth >= 720.dp
-            val paneWidth = (maxWidth * 0.42f).coerceIn(340.dp, 520.dp)
-            val detail = open?.let { id -> market.entries.firstOrNull { it.id == id } }
-            val select = { id: String ->
-                open = id
-                message = null
-            }
-            val showDetail = @Composable { e: CatalogEntry, showBack: Boolean, modifier: Modifier ->
-                Detail(
-                    market = market,
-                    e = e,
-                    theme = theme,
-                    linux = engine.linux,
-                    page = page,
-                    message = message,
-                    showBack = showBack,
-                    modifier = modifier,
-                    onBack = {
+    val detail = open?.let { id -> market.entries.firstOrNull { it.id == id } }
+    val back = {
+        open = null
+        message = null
+    }
+    BoxWithConstraints {
+        // What the panel's content gets: the screen less the gap and padding on both sides.
+        val wide = maxWidth - (PanelGap + PanelPadding) * 2 >= 720.dp
+        // On its own, an entry's page takes the header: a chevron back to the grid and its name, nothing else.
+        val alone = detail?.takeIf { !wide }
+        OverlayPanel(
+            alone?.name ?: "store",
+            onDismiss,
+            onBack = if (alone != null) back else LocalPanelBack.current,
+            actions = {
+                if (alone == null) {
+                    KindToggle(kind) {
+                        kind = it
                         open = null
                         message = null
-                    },
-                    onInstall = {
-                        scope.launch {
-                            message = market.install(e, page)
-                            if (message == null) onDismiss()
-                        }
-                    },
-                )
-            }
-            val list = @Composable { modifier: Modifier ->
-                StoreList(engine, market, agents, page, theme, filter, if (wide) open else null, modifier, select, onDismiss)
-            }
-            when {
-                // Side by side: the grid, and the picked widget's page beside it.
-                wide ->
-                    Row {
-                        list(Modifier.weight(1f))
-                        Box(Modifier.padding(horizontal = 12.dp).width(1.dp).fillMaxHeight().background(Palette.border))
-                        val pane = Modifier.width(paneWidth).fillMaxHeight()
-                        if (detail != null) {
-                            showDetail(detail, false, pane)
-                        } else {
-                            Box(pane, contentAlignment = Alignment.Center) {
-                                BasicText("pick ${if (kind == OwlKind.App) "an app" else "a widget"} to see what it installs and runs", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
+                    }
+                    RefreshButton(market.loading) { scope.launch { market.refresh() } }
+                }
+            },
+        ) {
+            BoxWithConstraints {
+                val paneWidth = (maxWidth * 0.42f).coerceIn(340.dp, 520.dp)
+                val select = { id: String ->
+                    open = id
+                    message = null
+                }
+                val showDetail = @Composable { e: CatalogEntry, modifier: Modifier ->
+                    Detail(
+                        market = market,
+                        e = e,
+                        theme = theme,
+                        linux = engine.linux,
+                        page = page,
+                        message = message,
+                        modifier = modifier,
+                        onInstall = {
+                            scope.launch {
+                                message = market.install(e, page)
+                                // A widget closes the store to show it on its page; an app stays, its page saying it's in the drawer.
+                                if (message == null && market.kind == OwlKind.Widget) onDismiss()
+                            }
+                        },
+                    )
+                }
+                val list = @Composable { modifier: Modifier ->
+                    StoreList(engine, market, agents, page, theme, filter, if (wide) open else null, modifier, select, onDismiss)
+                }
+                when {
+                    // Side by side: the grid, and the picked widget's page beside it.
+                    wide ->
+                        Row {
+                            list(Modifier.weight(1f))
+                            Box(Modifier.padding(horizontal = 12.dp).width(1.dp).fillMaxHeight().background(Palette.border))
+                            val pane = Modifier.width(paneWidth).fillMaxHeight()
+                            if (detail != null) {
+                                showDetail(detail, pane)
+                            } else {
+                                Box(pane, contentAlignment = Alignment.Center) {
+                                    BasicText("pick ${if (kind == OwlKind.App) "an app" else "a widget"} to see what it installs and runs", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
+                                }
                             }
                         }
+                    detail != null -> {
+                        BackHandler(onBack = back)
+                        showDetail(detail, Modifier.padding(top = 8.dp).widthIn(max = ReadingWidth).align(Alignment.TopCenter))
                     }
-                detail != null -> {
-                    BackHandler { open = null }
-                    showDetail(detail, true, Modifier.widthIn(max = ReadingWidth).align(Alignment.TopCenter))
+                    else -> list(Modifier)
                 }
-                else -> list(Modifier)
             }
         }
     }
@@ -474,10 +481,7 @@ private fun Detail(
     linux: Boolean,
     page: Int,
     message: String?,
-    /** The way back to the grid; off where the grid stays beside the page. */
-    showBack: Boolean,
     modifier: Modifier,
-    onBack: () -> Unit,
     onInstall: () -> Unit,
 ) = key(e.id) {
     val installed = market.installedVersion(e)
@@ -486,16 +490,6 @@ private fun Detail(
     val busy = market.busy[e.id]
     // Keyed by the widget, so picking another one beside the grid starts its page at the top.
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (showBack) {
-            Row(
-                Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onBack).padding(vertical = 6.dp).padding(end = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Image(Icons.Back, null, Modifier.size(16.dp), colorFilter = ColorFilter.tint(Palette.muted))
-                BasicText(if (market.kind == OwlKind.App) "all apps" else "all widgets", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
-            }
-        }
         val screens = e.screensFor(theme)
         if (screens.isNotEmpty()) {
             Screens(market, preview, screens)
@@ -531,7 +525,7 @@ private fun Detail(
             !e.supported -> BasicText("needs a newer launcher (owl ${e.owl}); update the launcher to install it", style = Mono.copy(color = Palette.red, fontSize = TextSize.Small))
             update -> BracketAction("update ${installed?.version} → ${e.version}", Palette.accent, onInstall)
             installed != null -> BasicText(if (market.kind == OwlKind.App) "✓ in your app drawer" else "✓ on your home screen", style = Mono.copy(color = Palette.green))
-            else -> BracketAction(if (market.kind == OwlKind.App) "add to the app drawer" else "add to page $page", Palette.accent, onInstall)
+            else -> BracketAction(if (market.kind == OwlKind.App) "install" else "add to page $page", Palette.accent, onInstall)
         }
         message?.let { BasicText(it, style = Mono.copy(color = Palette.red, fontSize = TextSize.Small)) }
         if (!linux && e.needsLinux) {
