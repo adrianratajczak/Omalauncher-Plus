@@ -41,6 +41,9 @@ class Market(
         const val BASE = "https://simonschubert.github.io/omarchy-widgets/"
 
         private const val VERSION = 1
+
+        /** Settings checks for updates with a catalog at most this old; the store always reloads it. */
+        private const val STALE_MS = 60 * 60 * 1000L
     }
 
     /** What the user installed and approved, per catalog id. */
@@ -58,6 +61,10 @@ class Market(
         private set
     var error by mutableStateOf<String?>(null)
         private set
+
+    /** When the catalog last loaded; settings reloads it only when it's older than [STALE_MS]. */
+    var refreshedAt = 0L
+        private set
     val busy = mutableStateMapOf<String, String>()
     val installed = mutableStateMapOf<String, Installed>()
     private val previews = HashMap<String, ImageBitmap?>()
@@ -73,6 +80,7 @@ class Market(
         error = null
         try {
             entries = withContext(Dispatchers.IO) { Catalog.parse(String(httpGet(BASE + catalog)), if (kind == OwlKind.App) "apps" else "widgets") }
+            refreshedAt = System.currentTimeMillis()
         } catch (e: Exception) {
             error = "couldn't load the store: ${e.message ?: e}"
         } finally {
@@ -80,12 +88,21 @@ class Market(
         }
     }
 
+    /** Reloads the catalog unless it loaded recently; a failed load is tried again next time. */
+    suspend fun refreshIfStale() {
+        if (System.currentTimeMillis() - refreshedAt >= STALE_MS) refresh()
+    }
+
     fun fileFor(e: CatalogEntry) = (if (kind == OwlKind.App) "market-app-" else "market-") + "${e.author}-${e.id.substringAfter('/')}.owl"
 
     /** Installed, and its file is still there (removing the tile moves the file away). */
     fun installedVersion(e: CatalogEntry): Installed? = installed[e.id]?.takeIf { File(engine.dir, it.file).exists() }
 
-    fun hasUpdate(e: CatalogEntry) = installedVersion(e)?.let { Catalog.compareVersions(e.version, it.version) > 0 } == true
+    /** A newer version this launcher can run. */
+    fun hasUpdate(e: CatalogEntry) = e.supported && installedVersion(e)?.let { Catalog.compareVersions(e.version, it.version) > 0 } == true
+
+    /** Installed ones with an update, from the last loaded catalog. */
+    val updates get() = entries.filter { hasUpdate(it) }
 
     /** An update runs different commands or needs other packages than what the user approved. */
     fun changedSinceApproval(e: CatalogEntry) = installedVersion(e)?.let { it.commands != e.commands || it.requires != e.requires } == true
@@ -154,8 +171,16 @@ class Market(
         return img
     }
 
-    /** Reads the install records; call off the main thread before the store opens. */
+    private var loaded = false
+
+    /**
+     * Reads the install records once; call off the main thread before the store opens. Settings
+     * calls it too: opened on its own, after the process died, the engine hasn't started.
+     */
+    @Synchronized
     fun load() {
+        if (loaded) return
+        loaded = true
         val data = Versioned.read(record.takeIf { it.exists() }?.readText(), VERSION) as? JSONObject ?: return
         installed.putAll(
             data.mapEntries { id, f ->

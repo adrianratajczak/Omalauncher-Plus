@@ -112,6 +112,37 @@ class WidgetEngine(
     val market = Market(this, OwlKind.Widget)
     val appMarket = Market(this, OwlKind.App)
 
+    /** Settings' "update all" for widgets and apps is running. */
+    var updating by mutableStateOf(false)
+        private set
+
+    /** Why the last "update all" stopped short, or null. */
+    var updateError by mutableStateOf<String?>(null)
+        private set
+
+    /** Reloads both catalogs now, on the engine's scope: leaving settings doesn't cancel it. */
+    fun checkUpdates() {
+        scope.launch { for (m in listOf(market, appMarket)) m.refresh() }
+    }
+
+    /** Installs every store update, on the engine's scope: leaving settings doesn't stop it. */
+    fun updateAll() {
+        if (updating) return
+        updating = true
+        updateError = null
+        scope.launch {
+            try {
+                for (m in listOf(market, appMarket)) {
+                    for (e in m.updates) {
+                        m.install(e, page = 0)?.let { updateError = "${e.name}: $it" }
+                    }
+                }
+            } finally {
+                updating = false
+            }
+        }
+    }
+
     /** Widgets whose packages the user already agreed to (store installs): install them without asking again. */
     private val autoInstall = HashSet<String>()
 
