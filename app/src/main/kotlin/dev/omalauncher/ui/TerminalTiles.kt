@@ -160,18 +160,10 @@ class TerminalTiles(
         top: Float,
         minHeight: Float,
     ): Float {
-        // Its whole tile, so its frame clears the keys too; measured before the cut, which would otherwise feed back into it.
-        // A field's tile counts once it's measured.
-        val bounds = if (field != null) tile else active?.let { tile ?: it.bounds }
-        if (bounds == null) {
-            lift = 0f
-            cut = 0f
-            return lift
-        }
-        fun overlap(ime: Int) = if (ime == 0) 0f else (bounds.bottom + margin - (windowHeight - ime)).coerceAtLeast(0f)
-        val room = (bounds.top - top).coerceAtLeast(0f)
-        lift = minOf(overlap(imeHeight), room)
-        cut = (overlap(imeTarget) - room).coerceIn(0f, (bounds.height - minHeight).coerceAtLeast(0f))
+        val bounds = typingBounds(field != null, tile, active?.bounds)
+        val (l, c) = bounds?.let { liftAndCut(it, imeHeight, imeTarget, windowHeight, margin, top, minHeight) } ?: (0f to 0f)
+        lift = l
+        cut = c
         return lift
     }
 
@@ -192,6 +184,32 @@ class TerminalTiles(
     companion object {
         /** Tiles' foot app_ids, numbered on. */
         const val APP_ID_PREFIX = "omarchy.tile-"
+
+        /**
+         * What the lift keeps clear: the typing tile's whole tile, so its frame clears the keys too, measured before the
+         * cut, which would otherwise feed back into it. A focused field's tile counts once it's measured, never a
+         * terminal's bounds in its place; a terminal falls back to its own until its tile is.
+         */
+        internal fun typingBounds(
+            fieldFocused: Boolean,
+            tile: Rect?,
+            terminal: Rect?,
+        ): Rect? = if (fieldFocused) tile else terminal?.let { tile ?: it }
+
+        /** The lift and cut for [bounds], see [liftFor]. */
+        internal fun liftAndCut(
+            bounds: Rect,
+            imeHeight: Int,
+            imeTarget: Int,
+            windowHeight: Int,
+            margin: Float,
+            top: Float,
+            minHeight: Float,
+        ): Pair<Float, Float> {
+            fun overlap(ime: Int) = if (ime == 0) 0f else (bounds.bottom + margin - (windowHeight - ime)).coerceAtLeast(0f)
+            val room = (bounds.top - top).coerceAtLeast(0f)
+            return minOf(overlap(imeHeight), room) to (overlap(imeTarget) - room).coerceIn(0f, (bounds.height - minHeight).coerceAtLeast(0f))
+        }
     }
 }
 
