@@ -83,7 +83,6 @@ import dev.omalauncher.theme.ThemeDirs
 import dev.omalauncher.theme.ThemeDownload
 import dev.omalauncher.theme.ThemeStore
 import dev.omalauncher.theme.Toml
-import dev.omalauncher.widgets.GRID_COLUMNS
 import java.io.File
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -126,6 +125,8 @@ fun StyleScreen(
             Flag("icons", "monochrome", "colored", style, Style.MONOCHROME_ICONS)
             Flag("home apps", "boxed", "icon only", style, Style.APP_TILES)
             Flag("recent apps", "shown", "hidden", style, Style.RECENT_APPS)
+            CountOption("columns", Style.COLUMNS, style)
+            Flag("pages", "one", "auto", style, Style.FORCE_SINGLE_PAGE)
             NumberOption("corners", Corners.entries.map { it.label to it.scale.toDouble() }, Style.CORNER_SCALE, style)
             HomePreview(runtime)
             // Like Hyprland's gaps_in, gaps_out and border_size; the colors are in style.toml.
@@ -368,13 +369,14 @@ private fun TerminalPreview(
  */
 @Composable
 private fun HomePreview(runtime: Runtime) {
-    val apps = familiarApps(runtime, GRID_COLUMNS + 4)
+    val columns = runtime.style.style[Style.COLUMNS]
+    val apps = familiarApps(runtime, columns + 4)
     val mono = LauncherStyle.monochromeIcons
     val bare = LauncherStyle.bareAppIcons
     PreviewScreen {
-        // A row of home's grid: square cells, too small for labels, as most pinned apps are.
+        // A row of home's grid: square cells, as most pinned apps are.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(HomeGap)) {
-            for (i in 0 until GRID_COLUMNS) {
+            for (i in 0 until columns) {
                 val app = apps.getOrNull(i)
                 PreviewApp(app?.label ?: "app", app?.icons(runtime)?.let { if (mono) it.second else it.first }, Modifier.weight(1f).aspectRatio(1f))
             }
@@ -388,7 +390,7 @@ private fun HomePreview(runtime: Runtime) {
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                for (app in apps.drop(GRID_COLUMNS)) {
+                for (app in apps.drop(columns)) {
                     Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                         PreviewIcon(app.label, app.icons(runtime).let { if (mono) it.second else it.first }, 30.dp, strip = true)
                     }
@@ -678,6 +680,16 @@ private fun NumberOption(
     StyleOption(label, presets.map { it.first }, presets.indexOfFirst { it.second == value }, Toml.format(value) + unit) { i ->
         style.update { it.with(setting, presets[i].second) }
     }
+}
+
+@Composable
+private fun CountOption(
+    label: String,
+    setting: Setting.Count,
+    style: StyleStore,
+) {
+    val counts = setting.range.toList()
+    StyleOption(label, counts.map(Int::toString), counts.indexOf(style.style[setting])) { i -> style.update { it.with(setting, counts[i]) } }
 }
 
 /**
