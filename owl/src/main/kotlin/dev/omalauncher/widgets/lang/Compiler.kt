@@ -24,7 +24,7 @@ class Compiler private constructor(
          * instead of failing on what they don't know. Bump it with every
          * addition a widget could depend on: nodes, properties, builtins.
          */
-        const val LEVEL = 8
+        const val LEVEL = 9
         private const val MAX_ASSET_BYTES = 2 shl 20
 
         /** An app icon is a shape or two drawn in SVG, not a picture. */
@@ -97,6 +97,13 @@ class Compiler private constructor(
     /** Where a handler calls screen() or close(), which need a screen { } block. */
     private var screenAction: Int? = null
 
+    /**
+     * Compiling a handler or a state's first value, which run once when they run: the only places a
+     * value may come out different each time, as random() does. A let or a property re-reads its
+     * value whenever what it reads changes, and would jump.
+     */
+    private var chance = false
+
     /** Where a handler calls screen(), which an app has no use for. */
     private var openScreen: Int? = null
 
@@ -109,6 +116,16 @@ class Compiler private constructor(
     ) {
         val v = SINCE[feature] ?: return
         if (v > (needs?.first ?: 1)) needs = Triple(v, feature, pos)
+    }
+
+    private fun <T> chancy(f: () -> T): T {
+        val was = chance
+        chance = true
+        try {
+            return f()
+        } finally {
+            chance = was
+        }
     }
 
     private fun fail(
@@ -138,7 +155,7 @@ class Compiler private constructor(
         for (d in body.decls) {
             when (d) {
                 is Decl.Source -> globals[slots[d.name]!!] = source(d)
-                is Decl.State -> globals[slots[d.name]!!] = Global.State(d.name, ex(d.init, root), d.persist)
+                is Decl.State -> globals[slots[d.name]!!] = Global.State(d.name, chancy { ex(d.init, root) }, d.persist)
                 is Decl.Asset -> globals[slots[d.name]!!] = asset(d)
                 is Decl.Let -> {
                     val g = let(d)
@@ -714,49 +731,51 @@ class Compiler private constructor(
     ): Action {
         val inner = Scope(scope, params)
         val stmts =
-            h.stmts.map { s ->
-                when (s) {
-                    is Stmt.Assign -> {
-                        val slot = slots[s.name]
-                        if (slot == null || s.name !in states) {
-                            fail(if (slot == null) "unknown state '${s.name}'; declare it with: state ${s.name} = ..." else "'${s.name}' isn't a state and can't be assigned", s.pos)
+            chancy {
+                h.stmts.map { s ->
+                    when (s) {
+                        is Stmt.Assign -> {
+                            val slot = slots[s.name]
+                            if (slot == null || s.name !in states) {
+                                fail(if (slot == null) "unknown state '${s.name}'; declare it with: state ${s.name} = ..." else "'${s.name}' isn't a state and can't be assigned", s.pos)
+                            }
+                            val call = s.value as? Expr.Call
+                            if (call?.name == "run") {
+                                // result = run("..."): the output arrives later, when the command finishes.
+                                if (call.args.size != 1 || call.named.isNotEmpty()) fail("run takes one command", call.pos)
+                                val command = ex(call.args[0], inner)
+                                listCommand(call.args[0], command, inner, "run(…)")
+                                guest = true
+                                val run: (Env) -> Unit = { env -> env.host.runInto(command(env).toString(), slot) }
+                                return@map run
+                            }
+                            if (call?.name == "post") return@map post(call, inner, slot)
+                            val v = ex(s.value, inner)
+                            val run: (Env) -> Unit = { env -> env.host.write(slot, v(env)) }
+                            run
                         }
-                        val call = s.value as? Expr.Call
-                        if (call?.name == "run") {
-                            // result = run("..."): the output arrives later, when the command finishes.
-                            if (call.args.size != 1 || call.named.isNotEmpty()) fail("run takes one command", call.pos)
-                            val command = ex(call.args[0], inner)
-                            listCommand(call.args[0], command, inner, "run(…)")
-                            guest = true
-                            val run: (Env) -> Unit = { env -> env.host.runInto(command(env).toString(), slot) }
-                            return@map run
+                        is Stmt.Do -> {
+                            val call = s.call as Expr.Call
+                            if (call.name == "post") return@map post(call, inner, null)
+                            val arity = Builtins.actions[call.name] ?: fail("'${call.name}' isn't an action (${Builtins.actions.keys.joinToString()})", call.pos)
+                            if (call.args.size !in arity) fail("${call.name} takes ${arity.first}-${arity.last} values", call.pos)
+                            val args = call.args.map { ex(it, inner) }
+                            ACTION_WORDS[call.name]?.let { w ->
+                                val c = (args[0].const as? Str)?.v
+                                if (c != null && c !in w.words && !(w.numbers && c.toDoubleOrNull() != null)) fail(w.message, call.pos)
+                            }
+                            since(call.name, call.pos)
+                            if (call.name == "sound") webFile(call.args[0], inner, "sound")
+                            if (call.name == "screen" || call.name == "close") screenAction = screenAction ?: call.pos
+                            if (call.name == "screen") openScreen = openScreen ?: call.pos
+                            if (call.name in setOf("run", "terminal", "app")) {
+                                listCommand(call.args[0], args[0], inner, "${call.name}(…)")
+                                // A tap on terminal(...) or app(...) without Linux offers to install it; run(...) would fail unseen.
+                                if (call.name == "run") guest = true
+                            }
+                            val run: (Env) -> Unit = { env -> env.host.act(call.name, args.map { it(env) }) }
+                            run
                         }
-                        if (call?.name == "post") return@map post(call, inner, slot)
-                        val v = ex(s.value, inner)
-                        val run: (Env) -> Unit = { env -> env.host.write(slot, v(env)) }
-                        run
-                    }
-                    is Stmt.Do -> {
-                        val call = s.call as Expr.Call
-                        if (call.name == "post") return@map post(call, inner, null)
-                        val arity = Builtins.actions[call.name] ?: fail("'${call.name}' isn't an action (${Builtins.actions.keys.joinToString()})", call.pos)
-                        if (call.args.size !in arity) fail("${call.name} takes ${arity.first}-${arity.last} values", call.pos)
-                        val args = call.args.map { ex(it, inner) }
-                        ACTION_WORDS[call.name]?.let { w ->
-                            val c = (args[0].const as? Str)?.v
-                            if (c != null && c !in w.words && !(w.numbers && c.toDoubleOrNull() != null)) fail(w.message, call.pos)
-                        }
-                        since(call.name, call.pos)
-                        if (call.name == "sound") webFile(call.args[0], inner, "sound")
-                        if (call.name == "screen" || call.name == "close") screenAction = screenAction ?: call.pos
-                        if (call.name == "screen") openScreen = openScreen ?: call.pos
-                        if (call.name in setOf("run", "terminal", "app")) {
-                            listCommand(call.args[0], args[0], inner, "${call.name}(…)")
-                            // A tap on terminal(...) or app(...) without Linux offers to install it; run(...) would fail unseen.
-                            if (call.name == "run") guest = true
-                        }
-                        val run: (Env) -> Unit = { env -> env.host.act(call.name, args.map { it(env) }) }
-                        run
                     }
                 }
             }
@@ -1034,6 +1053,17 @@ class Compiler private constructor(
         if (e.name in setOf("cmd", "stream", "http", "file")) fail("${e.name}(...) is a source: source x = ${e.name}(\"...\")", e.pos)
         val b = Builtins.all[e.name] ?: fail("unknown function '${e.name}'", e.pos)
         since(e.name, e.pos)
+        if (e.name == "fmtTime" && e.args.size > 2) since(FMT_TIME_ZONE, e.pos)
+        if ((e.name == "random" || e.name == "shuffle" && e.args.size == 1) && !chance) {
+            fail(
+                if (e.name == "random") {
+                    "random() gives a new number each time it's read; set a state with it in a handler, like onTap: roll = random(1, 6), or use hash(seed, i) in a let"
+                } else {
+                    "shuffle(list) shuffles anew each time it's read; give it a seed, shuffle(list, seed), with the seed a state set to random(1000000) in a handler"
+                },
+                e.pos,
+            )
+        }
         if (e.named.isNotEmpty()) fail("${e.name} takes no named arguments", e.named[0].second.pos)
         if (e.args.size < b.min || e.args.size > b.max) {
             fail("${e.name} takes ${if (b.min == b.max) "${b.min}" else "${b.min}-${b.max}"} arguments, not ${e.args.size}", e.pos)

@@ -20,6 +20,9 @@ class LangTest {
         var slots = Array<Value>(program?.globals?.size ?: 0) { Null }
         val actions = ArrayList<String>()
 
+        // Before init: a state's first value can call builtins, which tick it.
+        override val budget = Budget(10_000)
+
         init {
             program?.globals?.forEachIndexed { i, g -> if (g is Global.State) slots[i] = g.init(Env.root(this)) }
         }
@@ -59,8 +62,6 @@ class LangTest {
         ) {
             actions += "post $slot $url $body $headers"
         }
-
-        override val budget = Budget(10_000)
     }
 
     /** Compiles a widget with one Text and evaluates its text. */
@@ -914,6 +915,163 @@ class LangTest {
             assertEquals("Sonntag Januar", text(sunday))
         } finally {
             Locale.setDefault(was)
+        }
+    }
+
+
+    private val owl9 = "meta { owl: 9 }"
+
+    private fun <T> inLocale(
+        locale: Locale,
+        f: () -> T,
+    ): T {
+        val was = Locale.getDefault()
+        Locale.setDefault(locale)
+        try {
+            return f()
+        } finally {
+            Locale.setDefault(was)
+        }
+    }
+
+    private fun widgetError(expr: String): String =
+        try {
+            text(expr, owl9)
+            fail("expected an error")
+            ""
+        } catch (e: WidgetError) {
+            e.message!!
+        }
+
+    @Test fun parseTimeReadsIsoDates() {
+        assertEquals("1792231440", text("parseTime(\"2026-10-17T10:04:00Z\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"2026-10-17T12:04:00+02:00\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"2026-10-17T12:04+0200\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"2026-10-17 05:04:00-05\")", owl9))
+        assertEquals("40.25", text("parseTime(\"2026-10-17T10:04:00.250Z\") % 100", owl9))
+        assertEquals("1792231440", text("parseTime(\"20261017T100400Z\")", owl9))
+        // Without a zone: in the one given, or the phone's.
+        assertEquals("1792195200", text("parseTime(\"2026-10-17\", \"\", \"UTC\")", owl9))
+        assertEquals("1792188000", text("parseTime(\"2026-10-17\", null, \"Europe/Berlin\")", owl9))
+        assertEquals("1792195200", text("parseTime(\"20261017\", \"\", \"UTC\")", owl9))
+        assertEquals("null", text("parseTime(\"tomorrow\")", owl9))
+        assertEquals("null", text("parseTime(\"2026-13-40\")", owl9))
+        assertEquals("null", text("parseTime(null)", owl9))
+    }
+
+    @Test fun parseTimeReadsFeedDates() {
+        assertEquals("1792231440", text("parseTime(\"Sat, 17 Oct 2026 10:04:00 GMT\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"Sat, 17 Oct 2026 12:04:00 +0200\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"Sat, 17 Oct 2026 03:04:00 PDT\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"17 Oct 2026 10:04 UT\")", owl9))
+    }
+
+    @Test fun parseTimeTakesAPattern() {
+        // English month names, whatever the phone's language: dates come from APIs.
+        inLocale(Locale.GERMAN) {
+            assertEquals("1792231440", text("parseTime(\"Oct 17, 2026 10:04 AM\", \"MMM d, yyyy h:mm a\", \"UTC\")", owl9))
+            assertEquals("1792231440", text("parseTime(\"oct 17, 2026 10:04 am\", \"MMM d, yyyy h:mm a\", \"UTC\")", owl9))
+        }
+        assertEquals("1792231440", text("parseTime(\"17.10.2026 12:04 +02:00\", \"dd.MM.yyyy HH:mm XXX\")", owl9))
+        assertEquals("1792195200", text("parseTime(\"17.10.2026\", \"dd.MM.yyyy\", \"UTC\")", owl9))
+        // A time without a date is today's.
+        val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay() * 86400
+        assertEquals("${today + 10 * 3600 + 4 * 60}", text("parseTime(\"10:04\", \"HH:mm\", \"UTC\")", owl9))
+        assertEquals("null", text("parseTime(\"10h04\", \"HH:mm\", \"UTC\")", owl9))
+        assertTrue(widgetError("parseTime(\"x\", \"HH:mm{\")").contains("bad time pattern"))
+    }
+
+    @Test fun fmtTimeTakesAZoneAndALanguage() {
+        assertEquals("05:30", text("fmtTime(0, \"HH:mm\", \"Asia/Kolkata\")", owl9))
+        assertEquals("02:00", text("fmtTime(0, \"HH:mm\", \"+02:00\")", owl9))
+        assertEquals("Sonntag", text("fmtTime(${3 * 86400 + 43200}, \"EEEE\", \"UTC\", \"de\")", owl9))
+        inLocale(Locale.GERMAN) { assertEquals("Sunday", text("fmtTime(${3 * 86400 + 43200}, \"EEEE\", null, \"en\")", owl9)) }
+        // A duration under a day, as a clock.
+        assertEquals("3:07", text("fmtTime(187, \"m:ss\", \"UTC\")", owl9))
+        assertTrue(compileError("widget {\n $owl9\n Text { text: fmtTime(0, \"HH\", \"Mars/Olympus\") } }").contains("unknown time zone 'Mars/Olympus'"))
+        assertTrue(widgetError("fmtTime(0, \"HH\", str(\"Mars/Olympus\") + tileWidth)").contains("unknown time zone"))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: fmtTime(0, \"HH\", \"UTC\") } }").contains("needs owl 9"))
+        // Two values still need no owl 9.
+        assertEquals("00", text("fmtTime(0, \"mm\")", "meta { owl: 8 }"))
+    }
+
+    @Test fun fmtAgoIsShort() {
+        assertEquals("now", text("fmtAgo(0, 59)", owl9))
+        assertEquals("5m", text("fmtAgo(0, 300)", owl9))
+        assertEquals("2h", text("fmtAgo(0, 7300)", owl9))
+        assertEquals("3d", text("fmtAgo(0, 3 * 86400)", owl9))
+        assertEquals("2w", text("fmtAgo(0, 20 * 86400)", owl9))
+        assertEquals("1y", text("fmtAgo(0, 400 * 86400)", owl9))
+        assertEquals("in 10m", text("fmtAgo(600, 0)", owl9))
+        assertEquals("null", text("fmtAgo(null, 5)", owl9))
+        assertEquals("null", text("fmtAgo(5, null)", owl9))
+    }
+
+    @Test fun fmtNumGroupsAndCompacts() {
+        inLocale(Locale.ENGLISH) {
+            assertEquals("1,234,568", text("fmtNum(1234567.891)", owl9))
+            assertEquals("1,234.50", text("fmtNum(1234.5, 2)", owl9))
+            assertEquals("-12", text("fmtNum(\"-12.4\")", owl9))
+            assertEquals("0", text("fmtNum(-0.2)", owl9))
+            assertEquals("950", text("fmtNum(950, {compact: true})", owl9))
+            assertEquals("1.5k", text("fmtNum(1500, {compact: true})", owl9))
+            assertEquals("2k", text("fmtNum(2000, {compact: true})", owl9))
+            assertEquals("12k", text("fmtNum(12345, {compact: true})", owl9))
+            assertEquals("1M", text("fmtNum(999999, {compact: true})", owl9))
+            assertEquals("2.5B", text("fmtNum(2500000000, {compact: true})", owl9))
+            assertEquals("-1.5k", text("fmtNum(-1500, {compact: true})", owl9))
+            assertEquals("1.23k", text("fmtNum(1234, {compact: true, digits: 2})", owl9))
+            assertEquals("4.5", text("fmtNum(4.5, {compact: true})", owl9))
+            assertEquals("+3.2", text("fmtNum(3.2, {digits: 1, sign: true})", owl9))
+            assertEquals("-3.2", text("fmtNum(-3.2, {digits: 1, sign: true})", owl9))
+            assertEquals("0.0", text("fmtNum(-0.01, {digits: 1, sign: true})", owl9))
+            assertEquals("+1.5k", text("fmtNum(1500, {compact: true, sign: true})", owl9))
+            assertEquals("null", text("fmtNum(null)", owl9))
+            assertTrue(widgetError("fmtNum(1, \"lots\")").contains("fmtNum takes a number of digits"))
+        }
+        inLocale(Locale.GERMAN) {
+            assertEquals("1.234,50", text("fmtNum(1234.5, 2)", owl9))
+            assertEquals("1,5k", text("fmtNum(1500, {compact: true})", owl9))
+        }
+    }
+
+    @Test fun hashAndSeededShuffleMatchTheQuickshellRuntime() {
+        // The same numbers as runtimes/quickshell's JavaScript, which copies these two functions.
+        assertEquals("0.10352621669881046", text("hash(\"a\")", owl9))
+        assertEquals("0.47707845945842564", text("hash(7)", owl9))
+        assertEquals("0.4710701135918498", text("hash(\"seed\", 3)", owl9))
+        assertEquals("0.1301283857319504", text("hash(\"ab\", \"c\")", owl9))
+        assertEquals("0.9770175418816507", text("hash(\"a\", \"bc\")", owl9))
+        assertEquals("[9, 3, 4, 1, 6, 8, 7, 5, 10, 2]", text("shuffle(range(1, 11), 42)", owl9))
+        assertEquals("[b, c, d, a]", text("shuffle([\"a\", \"b\", \"c\", \"d\"], \"x\")", owl9))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: hash(1) } }").contains("hash needs owl 9"))
+    }
+
+    @Test fun randomOnlyInHandlersAndFirstValues() {
+        val p = Compiler.compile("widget {\n $owl9\n state roll = random(1, 6)\n state order = []\n onTap: { roll = random(1, 6); order = shuffle(range(5)) }\n Text { text: roll } }")
+        val host = TestHost(p)
+        val seen = HashSet<Value>()
+        repeat(200) {
+            p.onTap!!.run(Env.root(host), emptyList())
+            seen += host.slots[0]
+            assertEquals((0 until 5).map { Num(it.toDouble()) }, (host.slots[1] as Lst).items.sortedBy { (it as Num).v })
+        }
+        assertEquals((1..6).map { Num(it.toDouble()) }.toSet(), seen)
+        val e = compileError("widget {\n $owl9\n let r = random()\n Text { text: r } }")
+        assertTrue(e, e.contains("random() gives a new number each time it's read"))
+        assertTrue(compileError("widget {\n $owl9\n Text { text: shuffle([1, 2]) } }").contains("give it a seed"))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n state r = 0\n onTap: r = random()\n Text { text: r } }").contains("random needs owl 9"))
+    }
+
+    @Test fun randomRanges() {
+        val p = Compiler.compile("widget {\n $owl9\n state a = 0\n state b = 0\n state c = 0\n onTap: { a = random(); b = random(3); c = random(6, 4) }\n Text { text: a } }")
+        val host = TestHost(p)
+        repeat(100) {
+            p.onTap!!.run(Env.root(host), emptyList())
+            val a = (host.slots[0] as Num).v
+            assertTrue(a >= 0 && a < 1)
+            assertTrue((host.slots[1] as Num).v in setOf(0.0, 1.0, 2.0))
+            assertTrue((host.slots[2] as Num).v in setOf(4.0, 5.0, 6.0))
         }
     }
 }

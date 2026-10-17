@@ -1,13 +1,23 @@
 package dev.omalauncher.widgets.lang
 
 import java.net.URLEncoder
+import java.text.DecimalFormatSymbols
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.time.temporal.ChronoField
+import java.time.temporal.TemporalQueries
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.floor
 import kotlin.math.roundToLong
+import kotlin.random.Random
 
 class Args(
     val args: List<Value>,
@@ -173,25 +183,194 @@ object Builtins {
 
     private fun regex(p: String) = synchronized(regexCache) { regexCache.getOrPut(p) { Regex(p) } }
 
+    /** By pattern, and by language tag after a NUL when a widget names one. */
     private val timeFormats = HashMap<String, DateTimeFormatter>()
 
     /** The language [timeFormats] name days and months in: the phone's can change while widgets run. */
     private var timeFormatsLocale: Locale? = null
 
+    private fun timeFormat(
+        pattern: String,
+        language: String,
+    ): DateTimeFormatter {
+        val default = Locale.getDefault()
+        return synchronized(timeFormats) {
+            if (default != timeFormatsLocale) {
+                timeFormats.clear()
+                timeFormatsLocale = default
+            }
+            timeFormats.getOrPut(if (language == "") pattern else "$pattern\u0000$language") {
+                val locale = if (language == "") default else Locale.forLanguageTag(language)
+                DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern(pattern).toFormatter(locale)
+            }
+        }
+    }
+
+    /** A time zone by name ("Europe/Berlin", "UTC") or offset ("+02:00"); null or "" is the phone's. */
+    private fun zone(v: Value): ZoneId =
+        if (v == Null || v.toString() == "") {
+            ZoneId.systemDefault()
+        } else {
+            runCatching { ZoneId.of(v.toString()) }.getOrElse { throw WidgetError("unknown time zone '$v'; use a name like \"Europe/Berlin\" or an offset like \"+02:00\"") }
+        }
+
     private fun fmtTime(
         seconds: Double,
         pattern: String,
+        zone: ZoneId,
+        language: String,
     ): String {
-        val locale = Locale.getDefault()
-        val f =
-            synchronized(timeFormats) {
-                if (locale != timeFormatsLocale) {
-                    timeFormats.clear()
-                    timeFormatsLocale = locale
-                }
-                timeFormats.getOrPut(pattern) { DateTimeFormatter.ofPattern(pattern, locale) }
+        val at = Instant.ofEpochMilli((seconds * 1000).toLong()).atZone(zone)
+        return runCatching { timeFormat(pattern, language).format(at) }.getOrElse { throw WidgetError("bad time pattern '$pattern'") }
+    }
+
+    /** 2026-10-17, 2026-10-17T10:04, …:05.123, with Z, +02, +0200 or +02:00, or a space instead of the T. */
+    private val isoTime = Regex("(\\d{4})-(\\d{2})-(\\d{2})(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2})(?:[.,](\\d{1,9}))?)?)? ?(Z|[+-]\\d{2}(?::?\\d{2})?)?", RegexOption.IGNORE_CASE)
+
+    /** iCalendar's basic form: 20261017, 20261017T1004, 20261017T100405Z. */
+    private val basicTime = Regex("(\\d{4})(\\d{2})(\\d{2})(?:T(\\d{2})(\\d{2})(\\d{2})?)?(Z)?", RegexOption.IGNORE_CASE)
+
+    /** The zone names RFC 822 dates (RSS feeds) use; RFC_1123_DATE_TIME only reads GMT and offsets. */
+    private val rfc822Zones = mapOf("UT" to "+0000", "UTC" to "+0000", "Z" to "+0000", "EST" to "-0500", "EDT" to "-0400", "CST" to "-0600", "CDT" to "-0500", "MST" to "-0700", "MDT" to "-0600", "PST" to "-0800", "PDT" to "-0700")
+
+    /**
+     * Unix seconds for a date in text: ISO 8601, iCalendar's basic form or RFC 1123 (`Sat, 17 Oct 2026
+     * 10:04:00 GMT`), or what a java.time [pattern] describes, in English. A date without a zone is a time in [zone];
+     * a pattern without a date is today there, and one without a time is midnight. Null when it isn't one.
+     */
+    private fun parseTime(
+        text: String,
+        pattern: String,
+        zone: ZoneId,
+    ): Value {
+        val s = text.trim()
+        if (pattern != "") {
+            // Dates come from APIs and feeds, which name months and days in English whatever the phone's language.
+            val f = runCatching { timeFormat(pattern, "en") }.getOrElse { throw WidgetError("bad time pattern '$pattern'") }
+            val t = runCatching { f.parse(s) }.getOrNull() ?: return Null
+            val today = LocalDate.now(zone)
+            val date =
+                t.query(TemporalQueries.localDate())
+                    ?: if (t.isSupported(ChronoField.MONTH_OF_YEAR) && t.isSupported(ChronoField.DAY_OF_MONTH)) {
+                        runCatching { today.withMonth(t.get(ChronoField.MONTH_OF_YEAR)).withDayOfMonth(t.get(ChronoField.DAY_OF_MONTH)) }.getOrNull() ?: return Null
+                    } else {
+                        today
+                    }
+            val time = t.query(TemporalQueries.localTime()) ?: LocalTime.MIDNIGHT
+            return epoch(ZonedDateTime.of(date, time, t.query(TemporalQueries.zone()) ?: zone))
+        }
+        val iso = isoTime.matchEntire(s)
+        val m = iso ?: basicTime.matchEntire(s)
+        if (m != null) {
+            val g = m.groupValues
+            fun part(i: Int) = g[i].toIntOrNull() ?: 0
+            val nanos = if (iso != null && g[7] != "") g[7].padEnd(9, '0').toInt() else 0
+            val offset = g.last().uppercase()
+            val at = runCatching { LocalDateTime.of(part(1), part(2), part(3), part(4), part(5), part(6), nanos) }.getOrNull() ?: return Null
+            // ZoneOffset reads Z, +02, +0200 and +02:00.
+            return epoch(at.atZone(if (offset == "") zone else ZoneOffset.of(offset)))
+        }
+        val named = s.substringAfterLast(' ')
+        val rfc = rfc822Zones[named.uppercase()]?.let { s.dropLast(named.length) + it } ?: s
+        return runCatching { epoch(ZonedDateTime.parse(rfc, DateTimeFormatter.RFC_1123_DATE_TIME)) }.getOrDefault(Null)
+    }
+
+    private fun epoch(t: ZonedDateTime) = n(t.toEpochSecond() + t.nano / 1e9)
+
+    /** How long ago [seconds] were, short: now, 5m, 3h, 2d, 6w, 1y; a time still to come is "in 5m". */
+    private fun fmtAgo(seconds: Double): String {
+        val s = kotlin.math.abs(seconds)
+        val short =
+            when {
+                s < 60 -> return "now"
+                s < 3600 -> "${(s / 60).toLong()}m"
+                s < 86400 -> "${(s / 3600).toLong()}h"
+                s < 7 * 86400 -> "${(s / 86400).toLong()}d"
+                s < 365 * 86400 -> "${(s / (7 * 86400)).toLong()}w"
+                else -> "${(s / (365 * 86400)).toLong()}y"
             }
-        return f.format(Instant.ofEpochMilli((seconds * 1000).toLong()).atZone(ZoneId.systemDefault()))
+        return if (seconds < 0) "in $short" else short
+    }
+
+    private val compactUnits = listOf("", "k", "M", "B", "T")
+
+    /**
+     * [x] in the phone's language, its thousands grouped, with [digits] after the point. Compact
+     * divides by thousands into k, M, B and T, with one digit under 10 and none above unless [digits]
+     * says otherwise (a trailing .0 then goes); [sign] puts + before a number above zero.
+     */
+    private fun fmtNum(
+        x: Double,
+        digits: Int?,
+        compact: Boolean,
+        sign: Boolean,
+    ): String {
+        if (x.isNaN() || x.isInfinite()) return Num(x).toString()
+        val locale = Locale.getDefault()
+        fun digitsFor(v: Double) = digits?.coerceIn(0, 10) ?: if (compact && kotlin.math.abs(v) < 10) 1 else 0
+
+        fun shown(
+            v: Double,
+            d: Int,
+        ) = Math.round(kotlin.math.abs(v) * Math.pow(10.0, d.toDouble())) / Math.pow(10.0, d.toDouble())
+        var v = x
+        var unit = 0
+        var d = digitsFor(v)
+        // 999.97 shows as 1000 at one digit: that's 1k.
+        while (compact && unit < compactUnits.size - 1 && shown(v, d) >= 1000) {
+            v /= 1000
+            unit++
+            d = digitsFor(v)
+        }
+        // No "-0" for a number that rounds to zero.
+        if (kotlin.math.abs(v) < 0.5 / Math.pow(10.0, d.toDouble())) v = 0.0
+        var s = String.format(locale, if (compact) "%.${d}f" else "%,.${d}f", v)
+        if (compact && digits == null && d > 0) {
+            val point = DecimalFormatSymbols.getInstance(locale).decimalSeparator
+            s = s.trimEnd('0').trimEnd(point)
+        }
+        return (if (sign && v > 0) "+" else "") + s + compactUnits[unit]
+    }
+
+    /** FNV-1a over the text of [values], mixed to spread nearby inputs apart (murmur3's finish), in [0, 1). */
+    private fun hash(values: List<Value>): Double {
+        var h = 0x811c9dc5.toInt()
+        values.forEachIndexed { i, v ->
+            // A NUL between values: hash("ab", "c") isn't hash("a", "bc").
+            if (i > 0) h *= 0x01000193
+            for (c in v.toString()) h = (h xor c.code) * 0x01000193
+        }
+        h = h xor (h ushr 16)
+        h *= 0x85ebca6b.toInt()
+        h = h xor (h ushr 13)
+        h *= 0xc2b2ae35.toInt()
+        h = h xor (h ushr 16)
+        return (h.toLong() and 0xffffffffL) / 4294967296.0
+    }
+
+    /** Fisher–Yates; [next] gives numbers in [0, 1). */
+    private fun shuffle(
+        items: List<Value>,
+        next: () -> Double,
+    ): List<Value> {
+        val out = items.toMutableList()
+        for (i in out.size - 1 downTo 1) {
+            val j = (next() * (i + 1)).toInt()
+            out[i] = out[j].also { out[j] = out[i] }
+        }
+        return out
+    }
+
+    /** mulberry32, seeded from [seed]'s [hash]: the same seed shuffles the same way, here and in the Quickshell runtime. */
+    private fun seeded(seed: Value): () -> Double {
+        var state = (hash(listOf(seed)) * 4294967296.0).toLong().toInt()
+        return {
+            state += 0x6d2b79f5
+            var t = state
+            t = (t xor (t ushr 15)) * (t or 1)
+            t = t xor (t + (t xor (t ushr 7)) * (t or 61))
+            ((t xor (t ushr 14)).toLong() and 0xffffffffL) / 4294967296.0
+        }
     }
 
     /**
@@ -386,8 +565,22 @@ object Builtins {
                         },
                     )
                 }.strict(),
-            // fmtTime(epochSeconds, "HH:mm"): java.time patterns in the phone's time zone.
-            "fmtTime" to Builtin(2, 2) { a -> Str(runCatching { fmtTime(a.num(0), a.str(1)) }.getOrElse { throw WidgetError("bad time pattern '${a.str(1)}'") }) }.strict(),
+            // fmtTime(epochSeconds, "HH:mm"): java.time patterns in the phone's time zone; owl 9 takes a zone and a language too.
+            "fmtTime" to Builtin(2, 4) { a -> Str(fmtTime(a.num(0), a.str(1), zone(a[2]), a.str(3))) }.strict(),
+            // owl 9: parseTime("2026-10-17T10:04:00Z") is Unix seconds, null if the text isn't a date.
+            // Not folded: a time without a date is today's, and one without a zone the phone's.
+            "parseTime" to Builtin(1, 3, pure = false) { a -> parseTime(a.str(0), a.str(1), zone(a[2])) }.strict(),
+            // owl 9: fmtAgo(t, now) is "5m", "3h", "2d"; now comes from a clock source, so it stays current.
+            "fmtAgo" to Builtin(2, 2) { a -> if (a[1] == Null) Null else Str(fmtAgo(a.num(1) - a.num(0))) }.strict(),
+            // owl 9: fmtNum(x, digits) or fmtNum(x, {digits, compact, sign}). Not folded: it's in the phone's language.
+            "fmtNum" to
+                Builtin(1, 2, pure = false) { a ->
+                    when (val o = a[1]) {
+                        is Obj -> Str(fmtNum(a.num(0), o.fields["digits"]?.num()?.toInt(), o.fields["compact"]?.truthy == true, o.fields["sign"]?.truthy == true))
+                        Null -> Str(fmtNum(a.num(0), null, false, false))
+                        else -> Str(fmtNum(a.num(0), o.num()?.toInt() ?: throw WidgetError("fmtNum takes a number of digits or a map like {compact: true}"), false, false))
+                    }
+                }.strict(),
             // weatherIcon(wttrCode, night?): omarchy's weather glyph; show it with font: icon.
             "weatherIcon" to Builtin(1, 2) { a -> Str(weatherIcon(a.int(0, 0), a[1].truthy)) },
             // match(s, regex): the groups of the first match (or the whole match), null if none.
@@ -451,6 +644,29 @@ object Builtins {
             "indexOf" to Builtin(2, 2) { a -> n(a.list(0).indexOf(a[1]).toDouble()) },
             "unique" to Builtin(1, 1) { a -> lst(a.list(0).distinct()) },
             "flatten" to Builtin(1, 1) { a -> lst(a.list(0).flatMap { if (it is Lst) it.items else listOf(it) }) },
+            // owl 9: shuffle(list, seed) shuffles the same way for the same seed; shuffle(list) differently each time, so only in handlers.
+            "shuffle" to
+                Builtin(1, 2, pure = false) { a ->
+                    val l = a.list(0)
+                    a.tick(l.size)
+                    lst(shuffle(l, if (a.size > 1) seeded(a[1]) else Random.Default::nextDouble))
+                },
+            // random() in [0, 1), random(n) a whole number from 0 to n - 1, random(a, b) one from a to b. Only in handlers and a state's first value.
+            "random" to
+                Builtin(0, 2, pure = false) { a ->
+                    val r = Random.Default.nextDouble()
+                    when (a.size) {
+                        0 -> n(r)
+                        1 -> n(floor(r * floor(a.num(0)).coerceAtLeast(0.0)))
+                        else -> {
+                            val lo = Math.ceil(minOf(a.num(0), a.num(1)))
+                            val hi = floor(maxOf(a.num(0), a.num(1)))
+                            n(if (hi < lo) lo else lo + floor(r * (hi - lo + 1)))
+                        }
+                    }
+                },
+            // hash(values...): a number in [0, 1) that's always the same for the same values, for noise in lets and canvases.
+            "hash" to Builtin(1, 16) { a -> n(hash(a.args)) },
             "keys" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { o -> lst(o.fields.keys.map(::Str)) } ?: Lst(emptyList()) },
             "values" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { o -> lst(o.fields.values.toList()) } ?: Lst(emptyList()) },
             "entries" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { lst(entriesOf(it)) } ?: Lst(emptyList()) },

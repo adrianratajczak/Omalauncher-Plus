@@ -93,9 +93,13 @@ internal val SINCE =
         // owl 7: more of the phone, without new permissions.
         listOf("android.alarm", "android.modes", "torch", "share", "haptic").associateWith { 7 } +
         // owl 8: apps, files that aren't tiles; the phone's apps as a list; images and sounds from the web; values in URLs.
-        listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc", "post", "screenInset").associateWith { 8 }
+        listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc", "post", "screenInset").associateWith { 8 } +
+        // owl 9: dates and numbers as text and back; chance.
+        listOf("parseTime", "fmtAgo", "fmtNum", FMT_TIME_ZONE, "random", "shuffle", "hash").associateWith { 9 }
 
 internal const val WEB_IMAGE = "an image from the web"
+
+internal const val FMT_TIME_ZONE = "fmtTime with a time zone or language"
 
 /**
  * Package managers a widget can declare in `requires`, with what a
