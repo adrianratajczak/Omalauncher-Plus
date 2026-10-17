@@ -817,11 +817,19 @@ private fun TiledPage(
                 // Above the tile, or below it when there's no room for it there: as tall as it turned out, since an
                 // app's shortcuts stack above its bar. Lined up with the tile's left edge, pulled in by however wide
                 // the bar turned out when that would run past the grid's edge, which keeps the gap tiles keep from the
-                // screen: a lone "remove" for an app at the edge stays next to it.
+                // screen: a lone "remove" for an app at the edge stays next to it. A tile with room on neither side (one
+                // filling the page) gets it inside, centred below the top handle, where it covers no handle's grab zone;
+                // below the grid it would sit under the strip and take the bottom handle's touches.
                 val barGap = with(density) { 8.dp.roundToPx() }
+                val inset = with(density) { 28.dp.roundToPx() }
                 fun at(size: IntSize): IntOffset {
                     val above = r.top - size.height - barGap
-                    return IntOffset(r.left.coerceAtMost(pageWidth - grid.pad.right - size.width).coerceAtLeast(grid.pad.left), if (above >= 0) above else r.bottom + barGap)
+                    val below = r.bottom + barGap
+                    return when {
+                        above >= 0 -> IntOffset(r.left.coerceAtMost(pageWidth - grid.pad.right - size.width).coerceAtLeast(grid.pad.left), above)
+                        below + size.height <= grid.height -> IntOffset(r.left.coerceAtMost(pageWidth - grid.pad.right - size.width).coerceAtLeast(grid.pad.left), below)
+                        else -> IntOffset(r.center.x - size.width / 2, r.top + inset)
+                    }
                 }
                 DisposableEffect(Unit) { onDispose { arrange.bar = null } }
                 Box(
