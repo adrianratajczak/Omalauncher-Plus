@@ -101,6 +101,9 @@ object Palette {
 object LauncherStyle {
     var style by mutableStateOf(Style())
 
+    /** What [Mono] draws in: Android's monospace, or a Linux font LauncherFont loaded for [Style.FONT]. */
+    var font by mutableStateOf<FontFamily>(FontFamily.Monospace)
+
     /** App icons as silhouettes in the accent color (Omarchy) rather than their own colors. */
     val monochromeIcons get() = style[Style.MONOCHROME_ICONS]
 
@@ -214,8 +217,17 @@ fun Modifier.tile(focused: Boolean = false): Modifier =
         Palette.glass,
     )
 
-/** The launcher's text style in the theme's foreground color. */
-val Mono get() = Palette.current.mono
+/** The launcher's text style in the theme's foreground color and the user's font. */
+val Mono: TextStyle
+    get() {
+        val palette = Palette.current
+        val font = LauncherStyle.font
+        monoCache?.let { if (it.first === palette && it.second === font) return it.third }
+        return palette.mono.copy(fontFamily = font).also { monoCache = Triple(palette, font, it) }
+    }
+
+/** [Mono] for the last palette and font, as it's read for every piece of text. */
+private var monoCache: Triple<ThemePalette, FontFamily, TextStyle>? = null
 
 /**
  * The launcher's text sizes. Nothing is smaller than [Small], which is still

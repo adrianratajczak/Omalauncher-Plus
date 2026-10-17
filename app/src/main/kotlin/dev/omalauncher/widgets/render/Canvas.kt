@@ -34,12 +34,12 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
+import dev.omalauncher.ui.LauncherStyle
 import dev.omalauncher.ui.Palette
 import dev.omalauncher.widgets.lang.Builtins
 import dev.omalauncher.widgets.lang.Env
@@ -252,7 +252,7 @@ private class Painter(
                         first.text(),
                         TextStyle(
                             color = color,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = LauncherStyle.font,
                             fontSize = (named["size"]?.num() ?: 13.0).sp,
                             fontWeight = if (named["bold"]?.truthy == true) FontWeight.Bold else null,
                         ),

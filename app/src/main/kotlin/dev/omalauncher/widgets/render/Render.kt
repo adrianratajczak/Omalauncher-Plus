@@ -597,7 +597,7 @@ private fun TextNode(
                     "sans" -> FontFamily.SansSerif
                     "serif" -> FontFamily.Serif
                     "icon" -> NerdSymbols
-                    else -> FontFamily.Monospace
+                    else -> LauncherStyle.font
                 },
             fontSize = p.observe("fontSize")?.num()?.sp ?: base.fontSize,
             fontWeight = if (p.observe("bold")?.truthy == true) FontWeight.Bold else null,

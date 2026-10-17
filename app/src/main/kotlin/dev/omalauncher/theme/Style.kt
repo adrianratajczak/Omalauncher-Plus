@@ -158,6 +158,10 @@ class Style(
         val STATUS_BAR_SHOWN = Setting.Flag("status-bar.shown", true, "Android's status bar on home; false hides it until a swipe down from the top edge.")
         val NAVIGATION_BAR = Bar("navigation-bar", "Android's gesture or button bar on home")
 
+        /** [FONT]'s value for Android's own monospace font. */
+        const val SYSTEM_FONT = "system"
+
+        val FONT = Setting.Text("font", SYSTEM_FONT, "The font family of the launcher's text and widgets: \"system\" is Android's monospace; fc-list :spacing=100 lists those Linux has.")
         val TERMINAL_FONT = Setting.Text("terminal.font", "JetBrains Mono", "The terminals' font family; fc-list :spacing=100 lists those installed.")
         val TERMINAL_TEXT = Setting.Number("terminal.text", 12.0, 6.0..32.0, "The terminals' em size in dp, before Android's font size: 10 smaller, 12 default, 14 larger.")
     }
@@ -198,7 +202,7 @@ object StyleFile {
 
     val ALL: List<Setting<*>> =
         with(Style) {
-            listOf(THEME, BACKGROUND, APP_TILES, RECENT_APPS, GAPS_IN, GAPS_OUT, TILE_BORDER_WIDTH, TILE_BORDER, TILE_BORDER_FOCUSED) +
+            listOf(THEME, BACKGROUND, FONT, APP_TILES, RECENT_APPS, GAPS_IN, GAPS_OUT, TILE_BORDER_WIDTH, TILE_BORDER, TILE_BORDER_FOCUSED) +
                 listOf(SCREEN_GAPS_OUT, SCREEN_BORDER_WIDTH, MONOCHROME_ICONS, CORNER_SCALE) +
                 listOf(STATUS_BAR_SHOWN) + STATUS_BAR.all + NAVIGATION_BAR.all + listOf(TERMINAL_FONT, TERMINAL_TEXT)
         }

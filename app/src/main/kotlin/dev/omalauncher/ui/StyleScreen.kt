@@ -125,6 +125,12 @@ fun StyleScreen(
             Flag("background", "shown", "hidden", style, Style.STATUS_BAR.framed, Style.NAVIGATION_BAR.framed)
             Stepper("border width", style, Style.STATUS_BAR.borderWidth, Style.NAVIGATION_BAR.borderWidth)
             if (linux == LinuxState.Installed) {
+                // Linux's fonts, which the terminal section lists.
+                Heading("launcher & widgets")
+                val fonts = listOf(Style.SYSTEM_FONT) + runtime.terminalFont.families
+                FontOption(fonts, style.style[Style.FONT], label = { if (it == Style.SYSTEM_FONT) "system default" else it }) { family ->
+                    style.update { it.with(Style.FONT, family) }
+                }
                 TerminalSection(runtime.terminalFont, runtime.terminals, style)
                 BasicText(
                     "more settings, like border and bar colors: ~/${StyleStore.GUEST_DIR}/defaults.toml",
@@ -351,6 +357,7 @@ private fun Heading(
 private fun FontOption(
     families: List<String>,
     selected: String,
+    label: (String) -> String = { it },
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -364,11 +371,11 @@ private fun FontOption(
                     .padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                BasicText(selected, Modifier.weight(1f, fill = false), style = Mono.copy(color = Palette.foreground), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                BasicText(label(selected), Modifier.weight(1f, fill = false), style = Mono.copy(color = Palette.foreground), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Symbol(if (open) Glyph.ChevronUp else Glyph.ChevronDown, Palette.muted, Modifier.padding(start = 6.dp))
             }
             if (open) {
-                ChoicePopup(families, selected, BelowAnchorStart, onDismiss = { open = false }, onPick = onSelect, label = { it })
+                ChoicePopup(families, selected, BelowAnchorStart, onDismiss = { open = false }, onPick = onSelect, label = label)
             }
         }
     }
