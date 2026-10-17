@@ -4,6 +4,29 @@ The most important changes in each release. The Play Store notes for a release
 are in `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`.
 Dates are when the build was uploaded to Play.
 
+## 0.8.1 (versionCode 16) – 2026-10-17
+
+- Home's grid has 4 to 9 columns (6 by default); changing it moves every tile onto
+  the new grid. A pages row keeps one page where a foldable would show two (#141).
+- Style settings preview home and widgets as they change, and the terminal preview
+  is drawn in place instead of starting a foot. The terminal font is a dropdown.
+- A font for the launcher's text and widgets: Android's monospace, or one of Linux's
+  monospace fonts.
+- Local network: on Android 17+ a settings row asks for ACCESS_LOCAL_NETWORK, so
+  widgets and Linux can reach devices like a printer or Home Assistant.
+- Store updates for widgets and apps show in settings' system updates box, with
+  pending packages and agents listed one per line.
+- The home menu has the settings gear at its top right, like the drawer.
+- Owl 9: `parseTime`, `fmtAgo`, `fmtNum`, `fmtTime` with a time zone and language,
+  `random`, `shuffle` and `hash`; `set`, `remove`, `merge`, `reduce`, `scan`,
+  `groupBy`, `toJson`, `capitalize`, `asin`, `acos`, `flatten` to a depth and
+  `on x first`; handlers have `if`/`else` and `let`. Numbers print as JavaScript
+  writes them (1792231445.5, not 1.7922314455E9).
+- Fixes: a widget's text field lifts its tile above the keyboard like a terminal;
+  home no longer stays sideways in portrait after a landscape app (before Android 14);
+  a widget filling its page shows its edit bar inside it; Linux setup no longer
+  hangs at "Installing cliamp" on phones with a small app heap.
+
 ## 0.8.0 (versionCode 15) – 2026-10-17
 
 - Apps: an owl file can be a full-screen app (`app "name" { }`, owl 8) that opens
