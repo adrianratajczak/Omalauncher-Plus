@@ -207,13 +207,15 @@ sealed interface Decl {
 
     /**
      * Statements that run on their own instead of on a touch (owl 4):
-     * `every 10s { }`, `at endsAt { }`, `when cond { }`, `on value { }`.
+     * `every 10s { }`, `at endsAt { }`, `when cond { }`, `on value { }`, and `on value first { }`
+     * to run for its first value too (owl 9).
      */
     class Trigger(
         val kind: String,
         val expr: Expr,
         val stmts: List<Stmt>,
         override val pos: Int,
+        val first: Boolean = false,
     ) : Decl {
         override val name get() = kind
     }

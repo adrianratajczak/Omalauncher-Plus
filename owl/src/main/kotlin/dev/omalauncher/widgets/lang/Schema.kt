@@ -95,11 +95,17 @@ internal val SINCE =
         // owl 8: apps, files that aren't tiles; the phone's apps as a list; images and sounds from the web; values in URLs.
         listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc", "post", "screenInset").associateWith { 8 } +
         // owl 9: dates and numbers as text and back; chance.
-        listOf("parseTime", "fmtAgo", "fmtNum", FMT_TIME_ZONE, "random", "shuffle", "hash").associateWith { 9 }
+        listOf("parseTime", "fmtAgo", "fmtNum", FMT_TIME_ZONE, "random", "shuffle", "hash").associateWith { 9 } +
+        // owl 9: lists and maps changed in place of rebuilding them; a trigger for a first value.
+        listOf("set", "remove", "merge", "reduce", "scan", "groupBy", "toJson", "capitalize", "asin", "acos", FLATTEN_DEPTH, ON_FIRST).associateWith { 9 }
 
 internal const val WEB_IMAGE = "an image from the web"
 
 internal const val FMT_TIME_ZONE = "fmtTime with a time zone or language"
+
+internal const val FLATTEN_DEPTH = "flatten with a depth"
+
+internal const val ON_FIRST = "on … first"
 
 /**
  * Package managers a widget can declare in `requires`, with what a

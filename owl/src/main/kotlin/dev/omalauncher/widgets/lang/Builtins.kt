@@ -348,6 +348,36 @@ object Builtins {
         return (h.toLong() and 0xffffffffL) / 4294967296.0
     }
 
+    private fun flatten(
+        items: List<Value>,
+        depth: Int,
+    ): List<Value> = if (depth <= 0) items else items.flatMap { if (it is Lst) flatten(it.items, depth - 1) else listOf(it) }
+
+    /**
+     * [v] with [key] set to [to] (or removed, for null): a list by index, from the end when it's
+     * negative, or a map by name. A list index that isn't in it changes nothing; null is an empty map.
+     */
+    private fun edited(
+        v: Value,
+        key: Value,
+        to: Value?,
+    ): Value =
+        when (v) {
+            is Lst -> {
+                val i = key.num()?.toInt()?.let { if (it < 0) v.items.size + it else it }
+                if (i == null || i !in v.items.indices) {
+                    v
+                } else if (to == null) {
+                    Lst(v.items.filterIndexed { j, _ -> j != i })
+                } else {
+                    Lst(v.items.toMutableList().also { it[i] = to })
+                }
+            }
+            is Obj -> Obj(LinkedHashMap(v.fields).also { if (to == null) it.remove(key.toString()) else it[key.toString()] = to })
+            Null -> if (to == null) Null else Obj(mapOf(key.toString() to to))
+            else -> v
+        }
+
     /** Fisher–Yates; [next] gives numbers in [0, 1). */
     private fun shuffle(
         items: List<Value>,
@@ -436,6 +466,8 @@ object Builtins {
             "rad" to Num1 { Math.toRadians(it) },
             "deg" to Num1 { Math.toDegrees(it) },
             "sign" to Num1 { Math.signum(it) },
+            "asin" to Num1 { Math.asin(it) },
+            "acos" to Num1 { Math.acos(it) },
             // NaN can't round: the general path reports it.
             "round" to Num1 { if (it.isNaN()) Double.NaN else it.roundToLong().toDouble() },
         )
@@ -482,6 +514,9 @@ object Builtins {
             "rad" to math(Math::toRadians),
             "deg" to math(Math::toDegrees),
             "sign" to math(Math::signum),
+            // owl 9
+            "asin" to math(Math::asin),
+            "acos" to math(Math::acos),
             "pow" to Builtin(2, 2) { a -> n(Math.pow(a.num(0), a.num(1))) }.strict(),
             "atan2" to Builtin(2, 2) { a -> n(Math.atan2(a.num(0), a.num(1))) },
             "num" to Builtin(1, 2) { a -> a[0].num()?.let(::n) ?: if (a.size > 1) a[1] else Null },
@@ -501,6 +536,8 @@ object Builtins {
                 },
             "trim" to Builtin(1, 1) { a -> Str(a.str(0).trim()) },
             "upper" to Builtin(1, 1) { a -> Str(a.str(0).uppercase()) },
+            // owl 9: the first letter in capitals, the rest as it is.
+            "capitalize" to Builtin(1, 1) { a -> Str(a.str(0).replaceFirstChar { it.titlecase() }) }.strict(),
             "lower" to Builtin(1, 1) { a -> Str(a.str(0).lowercase()) },
             "lines" to Builtin(1, 1) { a -> lst(a.str(0).lines().filter { it.isNotBlank() }.map(::Str)) },
             "words" to Builtin(1, 1) { a -> lst(a.str(0).trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.map(::Str)) },
@@ -643,7 +680,13 @@ object Builtins {
             "last" to Builtin(1, 1) { a -> a.list(0).lastOrNull() ?: Null },
             "indexOf" to Builtin(2, 2) { a -> n(a.list(0).indexOf(a[1]).toDouble()) },
             "unique" to Builtin(1, 1) { a -> lst(a.list(0).distinct()) },
-            "flatten" to Builtin(1, 1) { a -> lst(a.list(0).flatMap { if (it is Lst) it.items else listOf(it) }) },
+            // flatten(list): one level of lists in lists; owl 9 takes how many levels.
+            "flatten" to
+                Builtin(1, 2) { a ->
+                    val l = a.list(0)
+                    a.tick(l.size)
+                    lst(flatten(l, a.int(1, 1).coerceAtMost(64)))
+                },
             // owl 9: shuffle(list, seed) shuffles the same way for the same seed; shuffle(list) differently each time, so only in handlers.
             "shuffle" to
                 Builtin(1, 2, pure = false) { a ->
@@ -671,6 +714,46 @@ object Builtins {
             "values" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { o -> lst(o.fields.values.toList()) } ?: Lst(emptyList()) },
             "entries" to Builtin(1, 1) { a -> (a[0] as? Obj)?.let { lst(entriesOf(it)) } ?: Lst(emptyList()) },
             "get" to Builtin(2, 3) { a -> member(a[0], a.str(1)).takeIf { it != Null } ?: a[2] },
+            // owl 9: set(list, i, v) and set(map, key, v) are copies with that one changed; remove(...) without it.
+            "set" to Builtin(3, 3) { a -> edited(a[0], a[1], a[2]) },
+            "remove" to Builtin(2, 2) { a -> edited(a[0], a[1], null) },
+            // owl 9: merge(a, b, ...) is the maps' fields together, a later map's winning.
+            "merge" to
+                Builtin(1, 16) { a ->
+                    val out = LinkedHashMap<String, Value>()
+                    a.args.forEach { (it as? Obj)?.let { o -> out.putAll(o.fields) } }
+                    Obj(out)
+                },
+            // owl 9: reduce(list, (total, x, i) => ..., start) folds a list into one value; scan gives every step of it.
+            "reduce" to
+                Builtin(3, 3) { a ->
+                    val f = a.fn(1)
+                    val l = a.list(0)
+                    a.tick(l.size)
+                    var acc = a[2]
+                    l.forEachIndexed { i, v -> acc = f.call(listOf(acc, v, n(i.toDouble()))) }
+                    acc
+                },
+            "scan" to
+                Builtin(3, 3) { a ->
+                    val f = a.fn(1)
+                    val l = a.list(0)
+                    a.tick(l.size)
+                    var acc = a[2]
+                    lst(l.mapIndexed { i, v -> f.call(listOf(acc, v, n(i.toDouble()))).also { acc = it } })
+                },
+            // owl 9: groupBy(list, x => x.day) is a map from each key to the items with it, in the order they came.
+            "groupBy" to
+                Builtin(2, 2) { a ->
+                    val f = a.fn(1)
+                    val l = a.list(0)
+                    a.tick(l.size)
+                    val out = LinkedHashMap<String, ArrayList<Value>>()
+                    l.forEach { v -> out.getOrPut(f.call(listOf(v)).toString()) { ArrayList() } += v }
+                    Obj(out.mapValues { Lst(it.value) })
+                },
+            // owl 9: JSON text, for a post body built by hand, a file or a command.
+            "toJson" to Builtin(1, 1) { a -> Str(Json.write(a[0]) ?: throw WidgetError("toJson takes numbers, text, lists and maps, not colors or functions")) },
             // colors
             "rgb" to Builtin(3, 4) { a -> rgb(a.num(0), a.num(1), a.num(2), a.num(3, 1.0)) },
             "hsl" to Builtin(3, 4) { a -> hsl(a.num(0), a.num(1), a.num(2), a.num(3, 1.0)) },

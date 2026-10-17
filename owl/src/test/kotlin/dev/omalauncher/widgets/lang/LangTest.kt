@@ -120,7 +120,7 @@ class LangTest {
             if (fast.isNaN()) return
             assertTrue("$where: fast $fast, general $general", general is Num && general.v == fast)
         }
-        assertEquals(setOf("floor", "ceil", "abs", "sqrt", "sin", "cos", "tan", "rad", "deg", "sign", "round"), Builtins.numeric1.keys)
+        assertEquals(setOf("floor", "ceil", "abs", "sqrt", "sin", "cos", "tan", "rad", "deg", "sign", "asin", "acos", "round"), Builtins.numeric1.keys)
         for ((name, g) in Builtins.numeric1) for (x in inputs) check(name, listOf(x), g.of(x))
         for ((name, g) in Builtins.numeric2) for (x in inputs) for (y in inputs) check(name, listOf(x, y), g.of(x, y))
         for ((name, g) in Builtins.numeric3) {
@@ -1073,5 +1073,63 @@ class LangTest {
             assertTrue((host.slots[1] as Num).v in setOf(0.0, 1.0, 2.0))
             assertTrue((host.slots[2] as Num).v in setOf(4.0, 5.0, 6.0))
         }
+    }
+
+
+    @Test fun setAndRemoveCopyListsAndMaps() {
+        assertEquals("[1, 9, 3]", text("set([1, 2, 3], 1, 9)", owl9))
+        assertEquals("[1, 2, 9]", text("set([1, 2, 3], -1, 9)", owl9))
+        assertEquals("[1, 2, 3]", text("set([1, 2, 3], 5, 9)", owl9))
+        assertEquals("{a: 1, b: 3}", text("set({a: 1, b: 2}, \"b\", 3)", owl9))
+        assertEquals("{a: 1, c: 3}", text("set({a: 1}, \"c\", 3)", owl9))
+        assertEquals("{a: 1}", text("set(null, \"a\", 1)", owl9))
+        assertEquals("[1, 3]", text("remove([1, 2, 3], 1)", owl9))
+        assertEquals("[1, 2]", text("remove([1, 2, 3], -1)", owl9))
+        assertEquals("[1, 2, 3]", text("remove([1, 2, 3], \"x\")", owl9))
+        assertEquals("{b: 2}", text("remove({a: 1, b: 2}, \"a\")", owl9))
+        // In a handler, the edit a widget used to spell take(i) + [v] + drop(i + 1).
+        val p = Compiler.compile("widget {\n $owl9\n state xs = [1, 2, 3]\n onTap: xs = set(xs, 0, xs[0] + 10)\n Text { text: xs } }")
+        val host = TestHost(p)
+        p.onTap!!.run(Env.root(host), emptyList())
+        assertEquals("[11, 2, 3]", host.slots[0].toString())
+    }
+
+    @Test fun mergeReduceScanGroupBy() {
+        assertEquals("{a: 1, b: 3, c: 4}", text("merge({a: 1, b: 2}, {b: 3}, null, {c: 4})", owl9))
+        assertEquals("{a: 1, b: 3}", text("{a: 1, b: 2}.merge({b: 3})", owl9))
+        assertEquals("24", text("reduce([2, 3, 4], (p, x) => p * x, 1)", owl9))
+        assertEquals("3", text("[5, 9, 2].reduce((best, x, i) => x > 8 ? i + 2 : best, 0)", owl9))
+        assertEquals("start", text("reduce([], (a, x) => a + x, \"start\")", owl9))
+        assertEquals("[1, 3, 6, 10]", text("scan([1, 2, 3, 4], (sum, x) => sum + x, 0)", owl9))
+        assertEquals("{odd: [1, 3], even: [2]}", text("groupBy([1, 2, 3], x => x % 2 == 1 ? \"odd\" : \"even\")", owl9))
+        assertEquals("[]", text("keys(groupBy([], x => x))", owl9))
+    }
+
+    @Test fun toJsonCapitalizeFlattenAndInverseTrig() {
+        assertEquals("{\"a\":[1,\"x\",null,true],\"b\":{\"c\":0.5}}", text("toJson({a: [1, \"x\", null, true], b: {c: 0.5}})", owl9))
+        assertEquals("\"say \\\"hi\\\"\"", text("toJson(\"say \\\"hi\\\"\")", owl9))
+        // A constant fails as the widget compiles, one read at run time when it's evaluated.
+        assertTrue(compileError("widget {\n $owl9\n Text { text: toJson([accent]) } }").contains("toJson takes numbers"))
+        assertTrue(widgetError("toJson([tileWidth, accent])").contains("toJson takes numbers"))
+        assertEquals("Hello world", text("capitalize(\"hello world\")", owl9))
+        assertEquals("", text("capitalize(\"\")", owl9))
+        assertEquals("null", text("capitalize(null)", owl9))
+        assertEquals("[1, 2, [3, [4]]]", text("flatten([1, [2, [3, [4]]]])", owl9))
+        assertEquals("[1, 2, 3, [4]]", text("flatten([1, [2, [3, [4]]]], 2)", owl9))
+        assertEquals("[1, 2, 3, 4]", text("flatten([1, [2, [3, [4]]]], 10)", owl9))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: flatten([], 2) } }").contains("flatten with a depth needs owl 9"))
+        assertEquals("90", text("round(deg(asin(1)))", owl9))
+        assertEquals("60", text("round(deg(acos(0.5)))", owl9))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: asin(1) } }").contains("asin needs owl 9"))
+    }
+
+    @Test fun onFirstRunsForTheFirstValueToo() {
+        val p = Compiler.compile("widget {\n $owl9\n state n = 1\n state saved = 0\n on n first { saved = value }\n on n { saved = old }\n Text { text: n } }")
+        assertEquals(listOf(true, false), p.triggers.map { it.first })
+        // `first` is still a function everywhere else.
+        assertEquals("1", text("first([1, 2])", owl9))
+        val e = compileError("widget {\n meta { owl: 8 }\n state n = 1\n on n first { n = 2 }\n Text { text: n } }")
+        assertTrue(e, e.contains("on … first needs owl 9"))
+        assertTrue(compileError("widget {\n $owl9\n state n = 1\n on n later { n = 2 }\n Text { text: n } }").contains("expected '{'"))
     }
 }

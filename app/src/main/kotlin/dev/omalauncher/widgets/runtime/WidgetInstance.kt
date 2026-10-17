@@ -676,7 +676,11 @@ class WidgetInstance(
                                 if (v == Null) return@collect
                                 val old = seen[i]
                                 seen[i] = v
-                                if (old != null && old != v) fire(i, t, listOf(v, old))
+                                if (old != null && old != v) {
+                                    fire(i, t, listOf(v, old))
+                                } else if (old == null && t.first) {
+                                    fire(i, t, listOf(v, Null))
+                                }
                             }
                     }
                 }

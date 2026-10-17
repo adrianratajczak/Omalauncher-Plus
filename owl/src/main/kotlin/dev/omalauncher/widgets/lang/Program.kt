@@ -293,6 +293,8 @@ class Trigger(
     val expr: Ev,
     val action: Action,
     val pos: Int,
+    /** `on x first`: also for x's first value, with `old` null. */
+    val first: Boolean = false,
 )
 
 class Program(

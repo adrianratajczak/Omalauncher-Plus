@@ -541,7 +541,8 @@ class Compiler private constructor(
                 ex(d.expr, root)
             }
         if (d.kind != "every" && expr.const != null) fail("${d.kind} needs a value that changes, like a state or a source", d.expr.pos)
-        return Trigger(TriggerKind.of(d.kind), expr, handler(Handler(d.kind, d.stmts, d.pos), root, TRIGGER_PARAMS[d.kind].orEmpty()), d.pos)
+        if (d.first) since(ON_FIRST, d.pos)
+        return Trigger(TriggerKind.of(d.kind), expr, handler(Handler(d.kind, d.stmts, d.pos), root, TRIGGER_PARAMS[d.kind].orEmpty()), d.pos, d.first)
     }
 
     private fun component(d: Decl.Component): Component {
@@ -1054,6 +1055,7 @@ class Compiler private constructor(
         val b = Builtins.all[e.name] ?: fail("unknown function '${e.name}'", e.pos)
         since(e.name, e.pos)
         if (e.name == "fmtTime" && e.args.size > 2) since(FMT_TIME_ZONE, e.pos)
+        if (e.name == "flatten" && e.args.size > 1) since(FLATTEN_DEPTH, e.pos)
         if ((e.name == "random" || e.name == "shuffle" && e.args.size == 1) && !chance) {
             fail(
                 if (e.name == "random") {

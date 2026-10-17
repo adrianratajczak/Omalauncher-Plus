@@ -84,7 +84,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 9 }` | the language version the widget needs (this launcher has 9; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8, and `parseTime`, `fmtAgo`, `fmtNum`, `random`, `shuffle`, `hash` and `fmtTime`'s zone and language 9; using them without declaring it is an error |
+| `meta { owl: 9 }` | the language version the widget needs (this launcher has 9; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8, and `parseTime`, `fmtAgo`, `fmtNum`, `random`, `shuffle`, `hash`, `fmtTime`'s zone and language, `set`, `remove`, `merge`, `reduce`, `scan`, `groupBy`, `toJson`, `capitalize`, `asin`, `acos`, `flatten`'s depth and `on … first` 9; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -151,7 +151,7 @@ Statements that run on their own, written like handlers, at the top of the widge
 | `every 10s { ... }` | every 10 seconds while the page is live (on screen or next to it), like a source. At least 1 s |
 | `at endsAt { ... }` | when the clock reaches `endsAt`, a Unix time in seconds, even while the page is off screen. Again for each new time; 0 or null means none. A time that passed while the launcher wasn't running runs at the next start, so set it to 0 in the statements. While the phone sleeps it can run a little late, when it wakes |
 | `when cond { ... }` | each time `cond` turns true, including when it's already true as the widget starts |
-| `on x { ... }` | each time `x` changes, with `value` (the new one) and `old`. Not for its first value, and null (loading) doesn't count as a change |
+| `on x { ... }` | each time `x` changes, with `value` (the new one) and `old`. Not for its first value, and null (loading) doesn't count as a change. `on x first { ... }` runs for the first value too, with `old` null: for saving what a source fetched, from the first fetch on (owl 9) |
 
 ```owl
 widget "focus" {
@@ -187,13 +187,13 @@ second is held back and reported (one that changes what it watches would otherwi
 
 | functions | |
 |---|---|
-| numbers | `min max clamp(x, lo, hi) lerp(a, b, t) round(x, digits) floor ceil abs sqrt pow sin cos tan atan2 rad deg sign num(x, default) int` |
-| text | `sh(x)` (one shell word, see Values in commands), `enc(x)` (one URL component, see Values in URLs) `str len trim upper lower lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
+| numbers | `min max clamp(x, lo, hi) lerp(a, b, t) round(x, digits) floor ceil abs sqrt pow sin cos tan asin acos atan2 rad deg sign num(x, default) int` |
+| text | `sh(x)` (one shell word, see Values in commands), `enc(x)` (one URL component, see Values in URLs) `str len trim upper lower capitalize lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
 | format | `fmtBytes(n)` → `1.5G`, `fmtDuration(seconds)` → `2h 5m`, `fmtTime(seconds, "EEE HH:mm")`, `fmtAgo(t, now)` → `5m`, `fmtNum(n)` → `12,345`; see Dates and numbers |
 | weather | `weatherIcon(code, night)`: omarchy's weather glyph for a wttr.in `weatherCode` (show it with `font: icon`) |
-| parsing | `match(s, regex)` (groups of the first match), `matchAll(s, regex)`, `parseJson(s)`, `parseTime(s)` (a date in text as Unix seconds) |
+| parsing | `match(s, regex)` (groups of the first match), `matchAll(s, regex)`, `parseJson(s)`, `toJson(x)` (JSON text), `parseTime(s)` (a date in text as Unix seconds) |
 | chance | `random()`, `random(n)`, `random(a, b)`, `shuffle(list)`, only in handlers and a state's first value; `hash(...)` and `shuffle(list, seed)` anywhere. See Chance |
-| lists | `range(n)` or `range(a, b, step)`, `map filter find any all count sum avg sort sortBy reverse take drop first last indexOf unique flatten`, `keys values entries get(obj, key, default)` |
+| lists | `range(n)` or `range(a, b, step)`, `map filter find any all count sum avg sort sortBy reverse take drop first last indexOf unique`, `flatten(list, depth)` (depth 1 unless given), `keys values entries get(obj, key, default)`; see Changing lists and maps |
 | colors | theme names `accent foreground background muted surface border red green yellow blue magenta cyan orange` plus `bright_*`, `color0`…`color15`; `#7aa2f7`; `rgb(r, g, b, a)`, `hsl(h, s, l, a)`, `alpha(c, 0.5)`, `mix(a, b, t)` |
 | gradients | `linear(x0, y0, x1, y1, [colors])`, `radial(cx, cy, r, [colors])`: fills in Canvas |
 
@@ -226,6 +226,18 @@ time still to come. Take `now` from a clock source (`source now = clock every 1m
 `fmtNum(x, 2)` keeps two digits after the point. A map sets more: `fmtNum(x, {compact: true})` shortens
 to `950`, `1.5k`, `12k`, `3.4M`, `2.5B`, `1T` (one digit under 10, none above, unless `digits` says);
 `sign: true` puts a `+` before numbers above zero, for changes: `fmtNum(delta, {digits: 1, sign: true})`.
+
+### Changing lists and maps
+
+Values never change in place; these give a changed copy, to assign to a state in a handler (owl 9):
+
+- `set(list, i, v)` with item `i` replaced (counted from the end when negative; an index that isn't in
+  the list changes nothing), and `set(map, key, v)` with that field set. `remove(list, i)` and
+  `remove(map, key)` leave it out: `onTap: todos = remove(todos, i)`.
+- `merge(a, b, ...)` is the maps' fields together, a later one's winning: `merge(item, {done: true})`.
+- `reduce(list, (total, x, i) => ..., start)` works through a list to one value, and `scan` gives each
+  step on the way, like a running total: `scan(days, (sum, d) => sum + d.spent, 0)`.
+- `groupBy(list, x => x.day)` is a map from each key to the items that have it, in the order they came.
 
 ### Chance
 
