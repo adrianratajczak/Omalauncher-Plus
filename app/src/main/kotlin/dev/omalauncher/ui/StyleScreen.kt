@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,7 +31,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,8 +47,17 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -57,6 +66,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupPositionProvider
 import dev.omalauncher.Runtime
+import dev.omalauncher.linux.LauncherFont
 import dev.omalauncher.linux.LinuxState
 import dev.omalauncher.linux.TerminalFont
 import dev.omalauncher.linux.TerminalText
@@ -131,7 +141,7 @@ fun StyleScreen(
                 FontOption(fonts, style.style[Style.FONT], label = { if (it == Style.SYSTEM_FONT) "system default" else it }) { family ->
                     style.update { it.with(Style.FONT, family) }
                 }
-                TerminalSection(runtime.terminalFont, runtime.terminals, style)
+                TerminalSection(runtime.terminalFont, runtime.launcherFont, style)
                 BasicText(
                     "more settings, like border and bar colors: ~/${StyleStore.GUEST_DIR}/defaults.toml",
                     Modifier.padding(top = 20.dp),
@@ -294,7 +304,7 @@ private fun BackgroundSection(
 @Composable
 private fun TerminalSection(
     font: TerminalFont,
-    tiles: TerminalTiles,
+    launcherFont: LauncherFont,
     style: StyleStore,
 ) {
     LaunchedEffect(Unit) { font.refreshFamilies() }
@@ -306,39 +316,100 @@ private fun TerminalSection(
     val metrics = LocalContext.current.resources.displayMetrics
     val columns = font.columns(minOf(metrics.widthPixels, metrics.heightPixels))
     OptionHint("${TerminalFont.format(font.size).removeSuffix(".0")} pt · $columns columns in portrait", Modifier.padding(top = 2.dp))
-    TerminalPreview(font, tiles)
+    TerminalPreview(font, launcherFont)
 }
 
 /**
- * A real foot in the chosen [TerminalFont], as terminals will draw it. foot
- * keeps the family it started with, so a change starts another.
+ * Terminal output in the chosen [TerminalFont] and the theme's terminal colors,
+ * drawn here as foot will draw it: at its pixel size and pad, wrapped at its
+ * columns, without ligatures. The family loads from Linux's files; until it
+ * has, the one before it (or Android's monospace) stands in.
  */
 @Composable
 private fun TerminalPreview(
     font: TerminalFont,
-    tiles: TerminalTiles,
+    launcherFont: LauncherFont,
 ) {
-    val term = remember(font.family, font.size) { tiles.create(PREVIEW, font.size) }
-    DisposableEffect(term) { onDispose { term.close() } }
-    TerminalView(
-        term,
+    val family by produceState<FontFamily?>(null, font.family) { value = launcherFont.family(font.family) }
+    val density = LocalDensity.current
+    val style =
+        TextStyle(
+            fontFamily = family ?: FontFamily.Monospace,
+            fontSize = with(density) { font.emPx.toSp() },
+            color = Palette.foreground,
+            fontFeatureSettings = "liga 0, calt 0",
+        )
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(
         Modifier
             .padding(top = 12.dp)
             .fillMaxWidth()
-            .height(160.dp)
-            // Inset within the frame so its corners don't cut into foot's pixels.
             .frame(2.dp, Palette.border, Palette.background, radius = 12.dp)
-            .padding(4.dp),
-        interactive = false,
-    )
+            .padding(with(density) { font.padPx.toDp() }),
+    ) {
+        val cell = remember(style) { measurer.measure("0".repeat(100), style).size.width / 100f }
+        val columns = (constraints.maxWidth / cell).toInt().coerceAtLeast(1)
+        val palette = Palette.current
+        BasicText(remember(columns, palette) { previewText(columns) }, style = style, softWrap = false)
+    }
 }
 
-/** What the preview prints, without a cursor, then waits for it to be closed. */
+/** A stretch of [PREVIEW] in theme colors (foreground and none without them), maybe bold or italic. */
+private class Run(
+    val text: String,
+    val color: String? = null,
+    val bold: Boolean = false,
+    val italic: Boolean = false,
+    val background: String? = null,
+)
+
+/** A prompt, as the preview's shell shows it. */
+private val PROMPT = listOf(Run("~", "green"), Run(" "), Run("❯", "blue"), Run(" "))
+
+/**
+ * What the preview shows: ls, some code with the characters fonts tell apart and
+ * an italic docstring, git's colors, and a prompt with the theme's block cursor.
+ */
 private val PREVIEW =
-    """
-    printf '\033[?25l\033[32m~\033[0m \033[34m❯\033[0m ls\n\033[1;34mDocuments\033[0m  \033[1;34mProjects\033[0m  notes.md  \033[32mrun.sh\033[0m\n\033[32m~\033[0m \033[34m❯\033[0m cat greet.py\n\033[35mdef\033[0m \033[34mgreet\033[0m(name):  \033[90m# 0O 1lI {} [] <=\033[0m\n    \033[35mreturn\033[0m \033[32mf"hi {name}"\033[0m\n'
-    exec sleep infinity
-    """.trimIndent()
+    listOf(
+        PROMPT + Run("ls"),
+        listOf(Run("Documents", "blue", bold = true), Run("  "), Run("Projects", "blue", bold = true), Run("  notes.md  "), Run("run.sh", "green")),
+        PROMPT + Run("cat greet.py"),
+        listOf(Run("def", "magenta"), Run(" "), Run("greet", "blue"), Run("(name):  "), Run("# 0O 1lI {} [] <=", "color8")),
+        listOf(Run("    "), Run("\"\"\"Say hi, nicely.\"\"\"", "green", italic = true)),
+        listOf(Run("    "), Run("return", "magenta"), Run(" "), Run("f\"hi {name}\"", "green")),
+        PROMPT + Run("git status -s"),
+        listOf(Run(" M", "red"), Run(" "), Run("greet.py", "cyan"), Run("  "), Run("??", "yellow"), Run(" "), Run("todo.txt", "cyan")),
+        PROMPT + Run(" ", "background", background = "cursor"),
+    )
+
+/** [PREVIEW] wrapped as foot wraps, at [columns] characters rather than between words. */
+private fun previewText(columns: Int) =
+    buildAnnotatedString {
+        PREVIEW.forEachIndexed { i, line ->
+            if (i > 0) append('\n')
+            var column = 0
+            for (run in line) {
+                val style =
+                    SpanStyle(
+                        color = run.color?.let(Palette::named) ?: Color.Unspecified,
+                        fontWeight = if (run.bold) FontWeight.Bold else null,
+                        fontStyle = if (run.italic) FontStyle.Italic else null,
+                        background = run.background?.let(Palette::named) ?: Color.Unspecified,
+                    )
+                withStyle(style) {
+                    for (c in run.text) {
+                        if (column == columns) {
+                            append('\n')
+                            column = 0
+                        }
+                        append(c)
+                        column++
+                    }
+                }
+            }
+        }
+    }
 
 /** A section's title, set apart from the muted labels of the options under it by the accent color, as the weather screen sets its sections apart; [actions] go at the far end. */
 @Composable

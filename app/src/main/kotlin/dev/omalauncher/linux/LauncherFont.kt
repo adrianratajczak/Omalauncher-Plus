@@ -56,6 +56,19 @@ class LauncherFont(
     fun forget() {
         LauncherStyle.font = FontFamily.Monospace
         cache.delete()
+        loaded.clear()
+    }
+
+    /** What [family] loaded, so going back to one is instant. */
+    private val loaded = HashMap<String, FontFamily?>()
+
+    /**
+     * Any of the guest's families, as the terminal preview draws in the terminal's;
+     * null without Linux or the family, or if Android can't read its files.
+     */
+    suspend fun family(name: String): FontFamily? {
+        if (name in loaded) return loaded[name]
+        return withContext(Dispatchers.IO) { load(cached(name) ?: find(name)) }.also { loaded[name] = it }
     }
 
     /** The faces [family] has in the guest, as fontconfig lists them; empty without Linux or the family. */
