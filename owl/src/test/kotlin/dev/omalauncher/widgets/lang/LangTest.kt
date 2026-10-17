@@ -181,6 +181,22 @@ class LangTest {
         assertEquals("true", text("s == 10", "state s = \"10\""))
     }
 
+    /** Numbers read as JavaScript writes them, with no exponent from 1e-6 to 1e21. */
+    @Test fun numbersReadWithoutAnExponent() {
+        assertEquals("1792231445.5", text("1792231445.5"))
+        assertEquals("-12345678.25", text("-12345678.25"))
+        assertEquals("10000000000000000", text("10000000000000000"))
+        assertEquals("0.0005", text("0.0005"))
+        assertEquals("0.0000025", text("0.0000025"))
+        assertEquals("0.25", text("0.25"))
+        assertEquals("1e-7", text("0.0000001"))
+        assertEquals("-2.5e-7", text("-0.00000025"))
+        assertEquals("1e+21", text("1000000000000000000000"))
+        assertEquals("1.5e+22", text("15000000000000000000000"))
+        assertEquals("0", text("-0"))
+        assertEquals("{\"t\":1792231445.5}", text("toJson({t: 1792231445.5})", owl9))
+    }
+
     @Test fun listsAndLambdas() {
         assertEquals("[2, 4, 6]", text("[1, 2, 3].map(x => x * 2)"))
         assertEquals("[3, 2]", text("[1, 2, 3].filter(x => x > 1).sortBy(x => -x)"))
@@ -1033,6 +1049,11 @@ class LangTest {
             assertEquals("1.234,50", text("fmtNum(1234.5, 2)", owl9))
             assertEquals("1,5k", text("fmtNum(1500, {compact: true})", owl9))
         }
+        // Its own zero goes too: not ١٫٠k.
+        inLocale(Locale.forLanguageTag("ar-EG")) {
+            assertEquals("١k", text("fmtNum(1000, {compact: true})", owl9))
+            assertEquals("١٫٥k", text("fmtNum(1500, {compact: true})", owl9))
+        }
     }
 
     @Test fun hashAndSeededShuffleMatchTheQuickshellRuntime() {
@@ -1042,6 +1063,10 @@ class LangTest {
         assertEquals("0.4710701135918498", text("hash(\"seed\", 3)", owl9))
         assertEquals("0.1301283857319504", text("hash(\"ab\", \"c\")", owl9))
         assertEquals("0.9770175418816507", text("hash(\"a\", \"bc\")", owl9))
+        // Numbers, lists and maps hash as they read.
+        assertEquals("0.20254519511945546", text("hash(1792231445.5)", owl9))
+        assertEquals("0.31604075129143894", text("hash([1, 2.5])", owl9))
+        assertEquals("0.5861964426003397", text("hash({a: 1})", owl9))
         assertEquals("[9, 3, 4, 1, 6, 8, 7, 5, 10, 2]", text("shuffle(range(1, 11), 42)", owl9))
         assertEquals("[b, c, d, a]", text("shuffle([\"a\", \"b\", \"c\", \"d\"], \"x\")", owl9))
         assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: hash(1) } }").contains("hash needs owl 9"))

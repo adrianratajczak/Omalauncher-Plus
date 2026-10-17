@@ -326,8 +326,9 @@ object Builtins {
         if (kotlin.math.abs(v) < 0.5 / Math.pow(10.0, d.toDouble())) v = 0.0
         var s = String.format(locale, if (compact) "%.${d}f" else "%,.${d}f", v)
         if (compact && digits == null && d > 0) {
-            val point = DecimalFormatSymbols.getInstance(locale).decimalSeparator
-            s = s.trimEnd('0').trimEnd(point)
+            // The locale's zero: Arabic writes ١٫٠.
+            val symbols = DecimalFormatSymbols.getInstance(locale)
+            s = s.trimEnd(symbols.zeroDigit).trimEnd(symbols.decimalSeparator)
         }
         return (if (sign && v > 0) "+" else "") + s + compactUnits[unit]
     }
