@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import dev.omalauncher.Runtime
+import dev.omalauncher.widgets.render.LocalHomeTiles
 import dev.omalauncher.widgets.editWidgetCommand
 import dev.omalauncher.widgets.fixDependenciesCommand
 
@@ -83,7 +85,7 @@ fun HomeScreen(
     var menuFor by remember { mutableStateOf<HomeItem?>(null) }
 
     val terminals = runtime.terminals
-    BackHandler(enabled = terminals.active != null) { terminals.deactivate() }
+    BackHandler(enabled = terminals.typing) { terminals.deactivate() }
     BackHandler(enabled = state.homeMenuOpen) { state.homeMenuOpen = false }
     BackHandler(enabled = state.editing != null && !state.homeMenuOpen) { state.editing = null }
     BackHandler(enabled = arrange.folder != null && !state.homeMenuOpen) { arrange.folder = null }
@@ -175,14 +177,16 @@ fun HomeScreen(
     // Back with the soft keyboard up only reaches the keyboard app, which closes itself. Closed like that
     // (not by the tile's ⌨ button), the tile lets go too, so the bar and recent apps come back. Only once it's gone:
     // hiding it again mid-way, while a back swipe still drives its animation, left home taking no touches.
+    // A widget's text field the same: its keyboard closed without it losing focus.
     LaunchedEffect(terminals) {
         snapshotFlow { ime.getBottom(density) > 0 }.collect { shown ->
-            if (!shown && terminals.keyboard?.wanted == true) terminals.deactivate()
+            if (!shown && (terminals.keyboard?.wanted == true || terminals.field != null)) terminals.deactivate()
         }
     }
     // The bar and recent apps don't wait for that: back as the keyboard starts closing, like the pages.
     LaunchedEffect(terminals) {
-        snapshotFlow { imeTarget.getBottom(density) == 0 && terminals.keyboard?.wanted == true }.collect { terminals.keyboardLeaving = it }
+        snapshotFlow { imeTarget.getBottom(density) == 0 && (terminals.keyboard?.wanted == true || terminals.field != null) }
+            .collect { terminals.keyboardLeaving = it }
     }
     var origin by remember { mutableStateOf(Offset.Zero) }
     val extraKeys = terminals.active != null && extraKeysWanted()
@@ -205,14 +209,16 @@ fun HomeScreen(
             onRelease = { if (terminals.keyboard === it) terminals.keyboard = null },
             modifier = Modifier.size(1.dp),
         )
+    // A widget's text field on a tile lifts it like a terminal does.
+    CompositionLocalProvider(LocalHomeTiles provides terminals) {
     Column(
         Modifier
             .fillMaxSize()
             // Swiping up opens the drawer, like stock launchers, or what gesture settings say; not while editing, in a
             // folder or typing in a tile. A long-press drag takes its touches first, and the pager only wants sideways ones.
-            .homeSwipe(runtime, state, enabled = terminals.active == null && state.editing == null && arrange.folder == null)
-            // Typing in a terminal tile: lift the pages so the tile stays above the keyboard, but not under the status
-            // bar; a tile too tall for both gives up the rest at its bottom.
+            .homeSwipe(runtime, state, enabled = !terminals.typing && state.editing == null && arrange.folder == null)
+            // Typing in a tile (its terminal or a widget's text field): lift the pages so the tile stays above the keyboard,
+            // but not under the status bar; a tile too tall for both gives up the rest at its bottom.
             .graphicsLayer {
                 val keys = if (extraKeys) ExtraKeysHeight.toPx() else 0f
                 translationY =
@@ -229,7 +235,7 @@ fun HomeScreen(
             // nothing lifted under the status bar.
             .drawWithContent {
                 val keyboard = ime.getBottom(density)
-                if (terminals.active == null || keyboard == 0) {
+                if (!terminals.typing || keyboard == 0) {
                     drawContent()
                 } else {
                     val keys = if (extraKeys) ExtraKeysHeight.toPx() else 0f
@@ -291,7 +297,8 @@ fun HomeScreen(
                 when (item) {
                     is WidgetItem -> {
                         // Whose terminal has the keyboard: the tile gives up what the keyboard covers once the lift is spent.
-                        val typing = engine.instance(item.spec)?.owns(terminals.active) == true
+                        val instance = engine.instance(item.spec)
+                        val typing = instance != null && (instance.owns(terminals.active) || terminals.field?.widget === instance)
                         WidgetTile(
                             spec = item.spec,
                             instance = engine.instance(item.spec),
@@ -358,6 +365,7 @@ fun HomeScreen(
             onReorder = { app, before -> engine.shortcuts.moveBefore(app.key, before) },
             onRenameFolder = { folder, name -> engine.shortcuts.rename(folder.key, name) },
         )
+    }
     }
 
     if (extraKeys) {

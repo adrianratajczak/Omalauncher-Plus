@@ -82,6 +82,7 @@ import dev.omalauncher.widgets.lang.Env
 import dev.omalauncher.widgets.lang.Lst
 import dev.omalauncher.widgets.lang.Null
 import dev.omalauncher.widgets.lang.Num
+import dev.omalauncher.ui.TerminalTiles
 import dev.omalauncher.widgets.lang.Str
 import dev.omalauncher.widgets.lang.Value
 import dev.omalauncher.widgets.lang.WNode
@@ -96,6 +97,9 @@ val LocalHomeCovered = staticCompositionLocalOf<() -> Boolean> { { false } }
 
 /** Whether an Input's `focus` may take focus: only on a screen the user opened, never on a tile or in a preview. */
 val LocalInputFocus = staticCompositionLocalOf { false }
+
+/** On home's tiles: an Input there that takes the keyboard tells these, so its tile lifts above it like a terminal's. */
+val LocalHomeTiles = staticCompositionLocalOf<TerminalTiles?> { null }
 
 /** The widget's content inside its tile: padding, optional background, and the node tree. */
 @Composable
