@@ -267,9 +267,10 @@ class Parser private constructor(
         }
     }
 
-    private fun handler(): List<Stmt> {
-        if (!t.isP("{")) return listOf(stmt())
-        next()
+    private fun handler(): List<Stmt> = if (t.isP("{")) block() else listOf(stmt())
+
+    private fun block(): List<Stmt> {
+        punct("{")
         val out = ArrayList<Stmt>()
         while (!t.isP("}")) {
             if (accept(";")) continue
@@ -285,6 +286,27 @@ class Parser private constructor(
             next()
             next()
             return Stmt.Assign(start.text, expr(), start.pos)
+        }
+        // A state named if or let still assigns, above.
+        if (start.isId("if")) {
+            next()
+            val cond = expr()
+            if (!t.isP("{")) fail("expected '{' with the statements to run: if ... { ... }")
+            val then = block()
+            val orElse =
+                if (t.isId("else")) {
+                    next()
+                    if (t.isId("if")) listOf(stmt()) else block()
+                } else {
+                    emptyList()
+                }
+            return Stmt.If(cond, then, orElse, start.pos)
+        }
+        if (start.isId("let") && peek().type == T.Ident && peek(2).isP("=")) {
+            next()
+            val name = next().text
+            next()
+            return Stmt.Let(name, expr(), start.pos)
         }
         val e = expr()
         if (e !is Expr.Call) fail("expected an assignment (x = ...) or an action like run(\"...\")", start)

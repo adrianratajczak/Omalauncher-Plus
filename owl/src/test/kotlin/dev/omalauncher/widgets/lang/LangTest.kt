@@ -1132,4 +1132,58 @@ class LangTest {
         assertTrue(e, e.contains("on … first needs owl 9"))
         assertTrue(compileError("widget {\n $owl9\n state n = 1\n on n later { n = 2 }\n Text { text: n } }").contains("expected '{'"))
     }
+
+
+    /** Compiles an owl 9 widget with states a, b and c (0) and the handler [h], taps it, and gives the states and actions. */
+    private fun tap(
+        h: String,
+        decls: String = "",
+    ): String {
+        val p = Compiler.compile("widget {\n $owl9\n state a = 0\n state b = 0\n state c = 0\n $decls\n onTap: $h\n Text { text: a } }")
+        val host = TestHost(p)
+        p.onTap!!.run(Env.root(host), listOf(Num(5.0), Num(7.0)))
+        return "a=${host.slots[0]} b=${host.slots[1]} c=${host.slots[2]}" + host.actions.joinToString("") { "; $it" }
+    }
+
+    @Test fun ifInHandlersChooses() {
+        assertEquals("a=1 b=0 c=0", tap("{ if x < 6 { a = 1 } else { b = 1 } }"))
+        assertEquals("a=0 b=1 c=0", tap("{ if x > 6 { a = 1 } else { b = 1 } }"))
+        assertEquals("a=0 b=0 c=1", tap("{ if x > 6 { a = 1 } else if y > 6 { c = 1 } else { b = 1 } }"))
+        assertEquals("a=0 b=0 c=0", tap("{ if x > 6 { a = 1 } else if y > 9 { c = 1 } }"))
+        // A handler that is just an if, and ifs inside ifs.
+        assertEquals("a=2 b=0 c=0", tap("if x == 5 { if y == 7 { a = 2 } else { a = 3 } }"))
+        // Skipped actions don't run: no `run("true")` to stand in for nothing.
+        assertEquals("a=0 b=0 c=0; notify on", tap("{ if a == 1 { run(\"paplay x.wav\") }; if a == 0 { notify(\"on\") } }"))
+        assertEquals(listOf("paplay x.wav"), Compiler.compile("widget {\n $owl9\n state s = false\n onTap: if s { run(\"paplay x.wav\") }\n Text { text: s } }").commands)
+    }
+
+    @Test fun letInHandlersNamesAValue() {
+        // A let keeps the value it had: assignments after it don't change it.
+        assertEquals("a=12 b=0 c=12", tap("{ let sum = x + y; a = sum; a = 100; c = sum; a = sum }"))
+        assertEquals("a=1 b=5 c=0", tap("{ let old = a; a = 1; b = old + x }"))
+        // Visible after it in its block and the blocks inside, not outside.
+        assertEquals("a=2 b=0 c=0", tap("{ if x == 5 { let k = 2; if y == 7 { a = k } } }"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { if true { let k = 2 }; a = k }\n Text { text: a } }").contains("unknown name 'k'"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { a = k; let k = 2 }\n Text { text: a } }").contains("unknown name 'k'"))
+        // Lambdas see it too.
+        assertEquals("a=[6, 7] b=0 c=0", tap("{ let base = x; a = [1, 2].map(i => i + base) }"))
+        // A state called let still assigns.
+        assertEquals("a=0 b=0 c=0", tap("{ let = 3 }", "state let = 0"))
+    }
+
+    @Test fun handlersWithIfAndLetInTriggers() {
+        val p = Compiler.compile("widget {\n $owl9\n state n = 3\n state out = \"\"\n on n { let d = value - old; if d > 0 { out = \"up ${'$'}{d}\" } else { out = \"down\" } }\n Text { text: n } }")
+        val host = TestHost(p)
+        p.triggers.single().action.run(Env.root(host), listOf(Num(5.0), Num(3.0)))
+        assertEquals(Str("up 2"), host.slots[1])
+    }
+
+    @Test fun ifAndLetInHandlersSayWhatsWrong() {
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n state a = 0\n onTap: if a { a = 1 }\n Text { text: a } }").contains("if in a handler needs owl 9"))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n state a = 0\n onTap: { let b = 1; a = b }\n Text { text: a } }").contains("let in a handler needs owl 9"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { let a = 1 }\n Text { text: a } }").contains("'a' is already a name here"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { let x = 1 }\n Text { text: a } }").contains("'x' is already a name here"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { let k = 1; k = 2 }\n Text { text: a } }").contains("'k' is a let or a value given to the handler"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: if a a = 1\n Text { text: a } }").contains("expected '{'"))
+    }
 }

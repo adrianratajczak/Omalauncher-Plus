@@ -89,6 +89,21 @@ sealed interface Stmt {
         val call: Expr,
         override val pos: Int,
     ) : Stmt
+
+    /** `if cond { ... } else { ... }` in a handler (owl 9); `else if` is an If alone in [orElse]. */
+    data class If(
+        val cond: Expr,
+        val then: List<Stmt>,
+        val orElse: List<Stmt>,
+        override val pos: Int,
+    ) : Stmt
+
+    /** `let x = ...` in a handler (owl 9): a name for the statements after it, in its block. */
+    data class Let(
+        val name: String,
+        val value: Expr,
+        override val pos: Int,
+    ) : Stmt
 }
 
 /** Everything between a node's braces. */

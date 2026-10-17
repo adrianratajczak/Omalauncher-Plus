@@ -84,7 +84,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 9 }` | the language version the widget needs (this launcher has 9; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8, and `parseTime`, `fmtAgo`, `fmtNum`, `random`, `shuffle`, `hash`, `fmtTime`'s zone and language, `set`, `remove`, `merge`, `reduce`, `scan`, `groupBy`, `toJson`, `capitalize`, `asin`, `acos`, `flatten`'s depth and `on … first` 9; using them without declaring it is an error |
+| `meta { owl: 9 }` | the language version the widget needs (this launcher has 9; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8, and `parseTime`, `fmtAgo`, `fmtNum`, `random`, `shuffle`, `hash`, `fmtTime`'s zone and language, `set`, `remove`, `merge`, `reduce`, `scan`, `groupBy`, `toJson`, `capitalize`, `asin`, `acos`, `flatten`'s depth, `on … first`, and `if` and `let` in handlers 9; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -326,6 +326,30 @@ value hasn't loaded yet (`…`) does nothing. After an action,
 the widget that ran it refreshes its sources; other widgets keep their own intervals:
 `onTap: { count = count + 1; run("notify-send hi") }`
 
+Since owl 9 a handler can also choose with `if`, and name a value with `let` for the statements after it:
+
+```owl
+meta { owl: 9 }
+state score = 0
+state best = 0
+state sound = true
+onTap: {
+  let gained = x > tileWidth / 2 ? 2 : 1
+  score = score + gained
+  if score > best {
+    best = score
+    if sound { sound("https://example.com/win.ogg") }
+  } else if gained == 2 {
+    haptic()
+  }
+}
+Text { text: "${score} (best ${best})" }
+```
+
+Statements run in order and state writes take effect at once, so a `let` taken first keeps a value as it
+was before the handler changed it: `let was = food; food = food + 1`. A `let` is seen by the statements
+after it in its block (and blocks inside them), and needs a name not used for a state, source or let.
+
 | action | does |
 |---|---|
 | `terminal("btop")` | opens the command in a terminal window; `terminal(cmd, "title")` |
@@ -386,9 +410,9 @@ app "todo" {
 }
 ```
 
-Handlers have no `if`, so a `post` that only sometimes goes out takes a null URL the rest of the time:
-`every 5s { tok = post(code == "" ? null : "https://…/token", {code: code}) }` polls only while there is a
-code. The URLs are listed for review like `http(...)`'s, as `http POST https://…`, under the same rule:
+A `post` that only sometimes goes out goes in an `if` (owl 9):
+`every 5s { if code != "" { tok = post("https://…/token", {code: code}) } }` polls only while there is a
+code. Before owl 9 the same took a null URL, which sends nothing. The URLs are listed for review like `http(...)`'s, as `http POST https://…`, under the same rule:
 keep the server fixed and put values into the URL with `enc(...)`.
 
 ## Sounds

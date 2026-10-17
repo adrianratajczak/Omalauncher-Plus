@@ -731,63 +731,110 @@ class Compiler private constructor(
         params: List<String> = HANDLER_PARAMS[h.name].orEmpty(),
     ): Action {
         val inner = Scope(scope, params)
-        val stmts =
-            chancy {
-                h.stmts.map { s ->
-                    when (s) {
-                        is Stmt.Assign -> {
-                            val slot = slots[s.name]
-                            if (slot == null || s.name !in states) {
-                                fail(if (slot == null) "unknown state '${s.name}'; declare it with: state ${s.name} = ..." else "'${s.name}' isn't a state and can't be assigned", s.pos)
-                            }
-                            val call = s.value as? Expr.Call
-                            if (call?.name == "run") {
-                                // result = run("..."): the output arrives later, when the command finishes.
-                                if (call.args.size != 1 || call.named.isNotEmpty()) fail("run takes one command", call.pos)
-                                val command = ex(call.args[0], inner)
-                                listCommand(call.args[0], command, inner, "run(…)")
-                                guest = true
-                                val run: (Env) -> Unit = { env -> env.host.runInto(command(env).toString(), slot) }
-                                return@map run
-                            }
-                            if (call?.name == "post") return@map post(call, inner, slot)
-                            val v = ex(s.value, inner)
-                            val run: (Env) -> Unit = { env -> env.host.write(slot, v(env)) }
-                            run
-                        }
-                        is Stmt.Do -> {
-                            val call = s.call as Expr.Call
-                            if (call.name == "post") return@map post(call, inner, null)
-                            val arity = Builtins.actions[call.name] ?: fail("'${call.name}' isn't an action (${Builtins.actions.keys.joinToString()})", call.pos)
-                            if (call.args.size !in arity) fail("${call.name} takes ${arity.first}-${arity.last} values", call.pos)
-                            val args = call.args.map { ex(it, inner) }
-                            ACTION_WORDS[call.name]?.let { w ->
-                                val c = (args[0].const as? Str)?.v
-                                if (c != null && c !in w.words && !(w.numbers && c.toDoubleOrNull() != null)) fail(w.message, call.pos)
-                            }
-                            since(call.name, call.pos)
-                            if (call.name == "sound") webFile(call.args[0], inner, "sound")
-                            if (call.name == "screen" || call.name == "close") screenAction = screenAction ?: call.pos
-                            if (call.name == "screen") openScreen = openScreen ?: call.pos
-                            if (call.name in setOf("run", "terminal", "app")) {
-                                listCommand(call.args[0], args[0], inner, "${call.name}(…)")
-                                // A tap on terminal(...) or app(...) without Linux offers to install it; run(...) would fail unseen.
-                                if (call.name == "run") guest = true
-                            }
-                            val run: (Env) -> Unit = { env -> env.host.act(call.name, args.map { it(env) }) }
-                            run
-                        }
-                    }
-                }
-            }
+        val run = chancy { block(h.stmts, inner) }
         return Action(params) { env, values ->
             val e = if (params.isEmpty()) env else env.child(*Array(params.size) { values.getOrElse(it) { Null } })
             // Handlers run from touch events: a failure is reported, never thrown into the UI.
             try {
-                env.host.budget.run { stmts.forEach { it(e) } }
+                env.host.budget.run { run(e) }
             } catch (x: RuntimeException) {
                 env.host.report("${h.name}: ${x.message ?: x}")
             }
+        }
+    }
+
+    /** Handler statements, in order. A `let` opens a frame that the statements after it in its block see. */
+    private fun block(
+        stmts: List<Stmt>,
+        scope: Scope,
+    ): (Env) -> Unit {
+        val steps = ArrayList<(Env) -> Env>()
+        var s = scope
+        for (st in stmts) {
+            when (st) {
+                is Stmt.Let -> {
+                    since(HANDLER_LET, st.pos)
+                    // One name, one meaning: a let named like a state would read as the let but assign the state.
+                    if (st.name in slots || lookup(st.name, s) != null) fail("'${st.name}' is already a name here; give the let a name of its own", st.pos)
+                    val v = ex(st.value, s)
+                    s = Scope(s, listOf(st.name))
+                    steps += { env -> env.child(v(env)) }
+                }
+                is Stmt.If -> {
+                    since(HANDLER_IF, st.pos)
+                    val cond = ex(st.cond, s)
+                    val then = block(st.then, s)
+                    val orElse = block(st.orElse, s)
+                    steps += { env ->
+                        if (cond(env).truthy) then(env) else orElse(env)
+                        env
+                    }
+                }
+                else -> {
+                    val run = statement(st, s)
+                    steps += { env ->
+                        run(env)
+                        env
+                    }
+                }
+            }
+        }
+        return { env -> steps.fold(env) { e, step -> step(e) } }
+    }
+
+    /** An assignment or an action. */
+    private fun statement(
+        s: Stmt,
+        scope: Scope,
+    ): (Env) -> Unit {
+        return when (s) {
+            is Stmt.Assign -> {
+                val slot = slots[s.name]
+                if (lookup(s.name, scope) is Ref.Local) fail("'${s.name}' is a let or a value given to the handler, not a state, so it can't be assigned", s.pos)
+                if (slot == null || s.name !in states) {
+                    fail(if (slot == null) "unknown state '${s.name}'; declare it with: state ${s.name} = ..." else "'${s.name}' isn't a state and can't be assigned", s.pos)
+                }
+                val call = s.value as? Expr.Call
+                if (call?.name == "run") {
+                    // result = run("..."): the output arrives later, when the command finishes.
+                    if (call.args.size != 1 || call.named.isNotEmpty()) fail("run takes one command", call.pos)
+                    val command = ex(call.args[0], scope)
+                    listCommand(call.args[0], command, scope, "run(…)")
+                    guest = true
+                    val run: (Env) -> Unit = { env -> env.host.runInto(command(env).toString(), slot) }
+                    run
+                } else if (call?.name == "post") {
+                    post(call, scope, slot)
+                } else {
+                    val v = ex(s.value, scope)
+                    val run: (Env) -> Unit = { env -> env.host.write(slot, v(env)) }
+                    run
+                }
+            }
+            is Stmt.Do -> {
+                val call = s.call as Expr.Call
+                if (call.name == "post") return post(call, scope, null)
+                val arity = Builtins.actions[call.name] ?: fail("'${call.name}' isn't an action (${Builtins.actions.keys.joinToString()})", call.pos)
+                if (call.args.size !in arity) fail("${call.name} takes ${arity.first}-${arity.last} values", call.pos)
+                val args = call.args.map { ex(it, scope) }
+                ACTION_WORDS[call.name]?.let { w ->
+                    val c = (args[0].const as? Str)?.v
+                    if (c != null && c !in w.words && !(w.numbers && c.toDoubleOrNull() != null)) fail(w.message, call.pos)
+                }
+                since(call.name, call.pos)
+                if (call.name == "sound") webFile(call.args[0], scope, "sound")
+                if (call.name == "screen" || call.name == "close") screenAction = screenAction ?: call.pos
+                if (call.name == "screen") openScreen = openScreen ?: call.pos
+                if (call.name in setOf("run", "terminal", "app")) {
+                    listCommand(call.args[0], args[0], scope, "${call.name}(…)")
+                    // A tap on terminal(...) or app(...) without Linux offers to install it; run(...) would fail unseen.
+                    if (call.name == "run") guest = true
+                }
+                val run: (Env) -> Unit = { env -> env.host.act(call.name, args.map { it(env) }) }
+                run
+            }
+            // block() takes the others.
+            is Stmt.If, is Stmt.Let -> throw IllegalStateException("not a single statement")
         }
     }
 
