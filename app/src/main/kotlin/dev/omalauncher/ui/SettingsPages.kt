@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
@@ -67,8 +68,13 @@ fun SettingsPages(
     // The screens' own back handlers (a store page, a license) come later, so they go first.
     BackHandler(enabled = stack.isNotEmpty()) { close(stack.last()) }
     Box(Modifier.fillMaxSize().background(Palette.background)) {
-        for (page in stack.toList()) {
-            key(page) { SettingsPage(runtime, page, stack, homePage, onDismiss = { close(page) }) }
+        stack.toList().forEachIndexed { i, page ->
+            key(page) {
+                // One opened from another has a chevron back to it instead of the ✕.
+                CompositionLocalProvider(LocalPanelBack provides if (i == 0) null else ({ close(page) })) {
+                    SettingsPage(runtime, page, stack, homePage, onDismiss = { close(page) })
+                }
+            }
         }
     }
 }
@@ -90,7 +96,6 @@ private fun SettingsPage(
                 onStyle = { stack.push(SettingsPage.Style) },
                 onAgents = { stack.push(SettingsPage.Agents) },
                 onPackages = { stack.push(SettingsPage.Packages) },
-                onStore = { stack.push(SettingsPage.Store) },
                 onLinux = { stack.push(SettingsPage.Linux) },
                 onLicenses = { stack.push(SettingsPage.Licenses) },
                 onGestures = { stack.push(SettingsPage.Gestures) },

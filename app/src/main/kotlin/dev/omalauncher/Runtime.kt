@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import dev.omalauncher.linux.AGENTS
 import dev.omalauncher.linux.Agent
 import dev.omalauncher.linux.AgentStore
@@ -53,7 +54,10 @@ import dev.omalauncher.ui.SettingsPage
 import dev.omalauncher.ui.TerminalTiles
 import dev.omalauncher.ui.WindowManager
 import dev.omalauncher.ui.bitmapMask
+import dev.omalauncher.ui.Palette
 import dev.omalauncher.ui.decodeIcon
+import dev.omalauncher.ui.decodeImageIcon
+import dev.omalauncher.ui.decodeSvgIcon
 import dev.omalauncher.upgrade.Provisioner
 import dev.omalauncher.wayland.AndroidClipboard
 import dev.omalauncher.wayland.OutputInfo
@@ -61,6 +65,7 @@ import dev.omalauncher.wayland.WaylandServer
 import dev.omalauncher.wayland.XdgToplevel
 import dev.omalauncher.widgets.Shortcut
 import dev.omalauncher.widgets.WidgetEngine
+import dev.omalauncher.widgets.WidgetSpec
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -511,15 +516,44 @@ class Runtime(
         mono: Boolean,
     ): ImageBitmap? {
         androidKeyOf(shortcut)?.let { return if (mono) androidApps.masks[it] else androidApps.icons[it] }
+        shortcut.owl?.let { file -> return widgets.specs.firstOrNull { it.file.name == file }?.let { owlIcon(it, mono) } }
         val id = shortcut.linux?.id ?: return null
         return if (mono) linuxMasks[id] else linuxIcons[id]
     }
 
+    /** Owl apps' icons and silhouettes, by their SVG (or image) and the accent they were drawn in: a theme change draws them anew. */
+    private val owlIcons = HashMap<Pair<String, Int>, Pair<ImageBitmap, ImageBitmap>?>()
+
+    /**
+     * An owl app's icon, or its silhouette; null if it has none. An SVG is drawn with `currentColor` in the theme's
+     * accent, an asset's image (a PNG) as it is.
+     */
+    fun owlIcon(
+        spec: WidgetSpec,
+        mono: Boolean,
+    ): ImageBitmap? {
+        val program = spec.program ?: return null
+        val image = program.iconImage
+        val svg = program.icon
+        if (image == null && svg == null) return null
+        val accent = Palette.accent.toArgb()
+        val size = (52 * context.resources.displayMetrics.density).toInt()
+        val drawn =
+            owlIcons.getOrPut((svg ?: "image:" + image.contentHashCode()) to accent) {
+                val bmp = if (image != null) decodeImageIcon(image, size) else decodeSvgIcon(svg!!, size, accent)
+                bmp?.let { it.asImageBitmap() to bitmapMask(it).asImageBitmap() }
+            }
+        return if (mono) drawn?.second else drawn?.first
+    }
+
     /**
      * A pinned app's name as the drawer shows it, so it follows the phone's language and the app's updates; the name
-     * it was pinned with while its app is gone or not listed yet, and for Linux apps.
+     * it was pinned with while its app is gone or not listed yet, and for Linux apps. An owl app's follows its file's name.
      */
-    fun shortcutLabel(shortcut: Shortcut) = androidKeyOf(shortcut)?.let { androidApps.labels[it] } ?: shortcut.label
+    fun shortcutLabel(shortcut: Shortcut) =
+        androidKeyOf(shortcut)?.let { androidApps.labels[it] }
+            ?: shortcut.owl?.let { file -> widgets.specs.firstOrNull { it.file.name == file }?.name }
+            ?: shortcut.label
 
     /** A pinned Android app's or shortcut's key in [androidApps]; null for a Linux app. */
     private fun androidKeyOf(shortcut: Shortcut) =
@@ -569,6 +603,7 @@ class Runtime(
         shortcut.linux?.let { pinned -> launch(linuxApps.firstOrNull { it.id == pinned.id } ?: pinned) }
         shortcut.component?.let { c -> androidApps.pinned(c, shortcut.profile)?.let(androidApps::open) ?: androidApps.open(c, shortcut.profile) }
         shortcut.androidShortcut?.let { androidApps.open(it, shortcut.profile) }
+        shortcut.owl?.let(::openOwlApp)
     }
 
     fun launch(app: LinuxApp) {
@@ -624,6 +659,11 @@ class Runtime(
         homePage: Int? = null,
     ) {
         InstantActivity.startInstantly(context, SettingsActivity.intent(context, page, homePage))
+    }
+
+    /** Opens the owl app in file [name] in its own task; nothing if it isn't running (removed, or broken). */
+    fun openOwlApp(name: String) {
+        if (widgets.isApp(name)) InstantActivity.startInstantly(context, OwlAppActivity.intent(context, name))
     }
 
     /** Opens the Files app, at [path] (a guest path) if given. */

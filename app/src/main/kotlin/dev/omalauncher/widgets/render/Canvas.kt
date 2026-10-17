@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.DrawStyle
@@ -52,7 +53,10 @@ import dev.omalauncher.widgets.lang.WNode
 import dev.omalauncher.widgets.lang.WidgetError
 import dev.omalauncher.widgets.lang.num
 import dev.omalauncher.widgets.lang.text
+import dev.omalauncher.widgets.runtime.WidgetImage
 import dev.omalauncher.widgets.runtime.WidgetInstance
+import dev.omalauncher.widgets.runtime.drawPicture
+import androidx.compose.ui.graphics.nativeCanvas
 
 /** Drawing calls per frame; beyond this a Canvas stops and reports. */
 private const val MAX_OPS = 2000
@@ -75,7 +79,8 @@ internal fun CanvasNode(
     val measurer = rememberTextMeasurer(32)
     val inst = p.inst
     val solids = remember { HashMap<Int, SolidColor>() }
-    Canvas(modifier) {
+    // Its own layer: the drawing is replayed when something around it redraws, and only re-run when what it reads changes.
+    Canvas(modifier.graphicsLayer()) {
         val d = density
         val env = p.env.child(Num((size.width / d).toDouble()), Num((size.height / d).toDouble()))
         val painter = Painter(inst, measurer, this, d, solids)
@@ -265,19 +270,30 @@ private class Painter(
                 scale(1 / density, 1 / density, pivot = Offset.Zero) { drawText(layout, topLeft = Offset(x * density, y * density)) }
             }
             "image" -> {
-                val bitmap = inst.image(first.toString()) ?: return
-                drawImage(
-                    bitmap,
-                    dstOffset = IntOffset(v[1].toInt(), v[2].toInt()),
-                    dstSize = IntSize(v[3].toInt(), v[4].toInt()),
-                    // An alpha-only image (an app icon's silhouette, with monochrome icons) is a shape: color it like one.
-                    colorFilter =
-                        if (bitmap.config == ImageBitmapConfig.Alpha8) {
-                            ColorFilter.tint(androidx.compose.ui.graphics.Color(named["color"]?.let { Builtins.argb(it, inst) } ?: Palette.foreground.toArgb()))
-                        } else {
-                            null
-                        },
-                )
+                val color = named["color"]?.let { Builtins.argb(it, inst) }
+                when (val image = inst.image(first.toString()) ?: return) {
+                    is WidgetImage.Raster -> {
+                        val bitmap = image.bitmap
+                        drawImage(
+                            bitmap,
+                            dstOffset = IntOffset(v[1].toInt(), v[2].toInt()),
+                            dstSize = IntSize(v[3].toInt(), v[4].toInt()),
+                            // An alpha-only image (an app icon's silhouette, with monochrome icons) is a shape: color it like one.
+                            colorFilter =
+                                if (bitmap.config == ImageBitmapConfig.Alpha8) {
+                                    ColorFilter.tint(androidx.compose.ui.graphics.Color(color ?: Palette.foreground.toArgb()))
+                                } else {
+                                    null
+                                },
+                        )
+                    }
+                    // Drawn as vectors, so it stays sharp under the canvas's density scale.
+                    is WidgetImage.Vector ->
+                        drawIntoCanvas {
+                            val tint = color?.let { c -> android.graphics.PorterDuffColorFilter(c, android.graphics.PorterDuff.Mode.SRC_IN) }
+                            drawPicture(it.nativeCanvas, image.picture, v[1].toFloat(), v[2].toFloat(), v[3].toFloat(), v[4].toFloat(), tint)
+                        }
+                }
             }
             "sprite" -> {
                 val sprite = inst.sprite(first)

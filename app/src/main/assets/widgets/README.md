@@ -1,8 +1,11 @@
-# Home-screen widgets
+# Home-screen widgets and apps
 
 Each `*.owl` file in this folder is a widget on the Android home screen,
-written in OWL, a small declarative language in the spirit of QML. Save a file
-and it appears within a second. Then run `owl-check <file>`:
+written in OWL, a small declarative language in the spirit of QML. Its first
+word says what it is: `widget "name" { }` is a home-screen tile, and
+`app "name" { }` an app in the app drawer that opens full screen (see Apps).
+Everything below is about widgets unless it says otherwise; apps are written
+the same way. Save a file and it appears within a second. Then run `owl-check <file>`:
 
 ```
 $ owl-check 50-memory.owl
@@ -10,7 +13,8 @@ $ owl-check 50-memory.owl
   preview: ~/.config/omalauncher/widgets/.preview/50-memory.owl.png (3x4 cells, 528x712 px, with live data); look at it to check the layout
 ```
 
-A widget with a `screen { }` (see Screens) gets a second picture, of the screen as it opens.
+A widget with a `screen { }` (see Screens) gets a second picture, of the screen as it opens. An
+app has no tile: its picture is the `screen:` line, of the whole view at the phone's size.
 
 It waits until the launcher has loaded the file as saved, prints compile errors
 and problems found while running, and exits 1 if there are any. The preview is
@@ -60,7 +64,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 |---|---|
 | `source x = cmd("...") every 5s` | runs a bash command in this Arch system; `x` is its output (stdout, trimmed). Add `json` to parse JSON output, `timeout 30s` to allow more than 10 s, `status` to get `{out, err, code, ok}` instead (see below), `optional` to let the widget work without Linux (see Without Linux). Default interval: 60 s |
 | `source x = stream("...")` | a long-running command; every line it prints becomes the new value. Add `json` for JSON lines. At most 4 different streams run at once |
-| `source x = http("https://...") every 10m` | an HTTP GET from Android, no curl or shell needed. Takes `json`, `timeout` and `status` like cmd (with `status`, `code` is the HTTP status and `ok` means 2xx), and optionally headers: `http(url, {Accept: "application/json"})`. The response is capped at 1 MB and the interval at 5 s or more. Prefer it over `cmd("curl ...")` |
+| `source x = http("https://...") every 10m` | an HTTP GET from Android, no curl or shell needed. Takes `json`, `timeout` and `status` like cmd (with `status`, `code` is the HTTP status and `ok` means 2xx), and optionally headers: `http(url, {Accept: "application/json"})`. The response is capped at 1 MB and the interval at 5 s or more. Prefer it over `cmd("curl ...")`. A URL can hold values, through `enc()` (see Values in URLs); it's fetched again as soon as it changes, and a `null` URL pauses the source, keeping its last value: `http(tab == "news" ? "https://..." : null)` fetches only while that tab shows. A failed fetch (offline, an error status, a rate limit) is tried again after 30 s |
 | `source x = file("~/.cache/x.json")` | a file in this system, read again whenever it changes (no polling, no shell). Add `json` to parse it. A missing file reads as `""`; at most 1 MB is read. Prefer it over `cmd("cat ...") every 5s` (owl 4) |
 | `source now = clock every 1s` | Unix time in seconds, with no shell involved. Use `fmtTime(now, "HH:mm")` |
 | `source bat = android.battery` | `{level, charging, status, temp, voltage, health, plugged, technology, cycles}` from Android, updated as it changes (`temp` in °C, `voltage` in V; `health`, `plugged`, `technology` and `cycles` are null when the phone doesn't say) |
@@ -70,6 +74,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `source n = android.notifications` | the phone's notifications, newest first, updated as they come and go: `{available, count, items}`, each item `{key, app, package, profile, icon, title, text, time, clearable}` (`time` in Unix seconds; `profile` is `work` or `clone` for a notification from a work profile or a cloned app, else null; `icon` is the app's icon for `Image { src: i.icon }`, from that profile, owl 7). Ongoing ones (music, downloads) are left out. Needs the same notification access as media. See `examples/98-notifications.owl` (owl 4) |
 | `source v = android.volume` | the media volume: `{level, muted, steps}` (`level` in percent, `steps` how many the phone has), updated as it changes. Set it with `volume(...)` (owl 4) |
 | `source a = android.alarm` | the next alarm set in any clock app: `{set, time, app}`, updated as it changes. `time` is in Unix seconds (`fmtTime(a.time, "EEE HH:mm")`, or `at a.time`), `app` the clock app's package (`androidApp(a.app)`); both null when no alarm is set (owl 7) |
+| `source a = android.apps every 1m` | the phone's launchable apps, polled: a list of `{key, name, package, component, profile, system, icon, score, last}`. `key` is unique even with the same app in a work profile or a clone, and `androidApp(a.key)` opens that copy; `profile` is `work` or `clone` for those, else null; `icon` goes in `Image { src: a.icon }`. `score` and `last` (Unix seconds, null if never opened) are what the search ranks by: opens fade by half every two weeks, and `androidApp(...)` counts like opening from the drawer (owl 8) |
 | `source m = android.modes` | the phone's modes: `{dnd, saver, ringer, torch}`, updated as they change. `dnd` is Do Not Disturb in any form, `saver` battery saver, `ringer` is `normal`, `vibrate` or `silent`, and `torch` is null on a phone without a flash. Switch the torch with `torch(...)` (owl 7) |
 | `state x = 0` | a value that handlers can change. Add `persist` to keep it across restarts: `state endsAt = 0 persist` |
 | `let x = expr` | a derived value, recomputed only when what it reads changes. It can use sources, state and earlier lets |
@@ -79,7 +84,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 7 }` | the language version the widget needs (this launcher has 7; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7; using them without declaring it is an error |
+| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -99,8 +104,8 @@ add `status`: then `x.out` is the output (parsed with `json`), `x.err` is stderr
 source w = cmd("curl -sf wttr.in/?format=j1") every 30m json timeout 20s status
 Text { text: w == null ? "…" : w.ok ? "${w.out.current_condition[0].temp_C}°" : "offline" }
 ``` Keep commands fast. A command
-can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and re-runs with the new
-value at its next interval.
+can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and runs again as soon as the
+value changes (at most once a second), without waiting for its interval or a `refresh()`.
 
 ## Values in commands
 
@@ -118,6 +123,24 @@ Work on the value inside `sh()`: `${sh(upper(title))}`. Numbers from `int`, `rou
 `ceil`, `abs`, `fixed`, `len`, `count`, `sum`, `min`, `max` and `clamp` need no `sh()`. A command
 with a heredoc (`<<`) can't take values. The widget store only takes commands built this way;
 one shared as a link shows a warning instead.
+
+## Values in URLs
+
+The same holds for `http(...)`: put a value into its URL with `enc(value)`, which percent-encodes
+it, so a `/`, `?`, `&` or `#` in it can't change the path or add parameters, and keep the scheme
+and host fixed text (owl 8):
+
+```
+source coin = http("https://api.example.com/coins/${enc(id)}?days=${int(days)}") json   // right
+source coin = http("https://api.example.com/coins/${id}") json                          // wrong: not through enc()
+source coin = http("https://${enc(host)}/coins") json                                   // wrong: the host is a value
+```
+
+The store lists such a URL with `‹value›` where each value goes, and one built any other way as
+fetching "a URL put together while the widget runs". `owl-check` warns about those, with the line and
+the fix to make. A fixed base in a `let` counts as fixed text: `let api = "https://api.example.com"`, then
+`"${api}/coins/${enc(id)}"`. A value that is a path with `/` in it can't go through `enc()` (it would
+encode the slashes): write the fixed parts of the path out and `enc()` only what goes between them.
 
 ## Triggers
 
@@ -165,7 +188,7 @@ second is held back and reported (one that changes what it watches would otherwi
 | functions | |
 |---|---|
 | numbers | `min max clamp(x, lo, hi) lerp(a, b, t) round(x, digits) floor ceil abs sqrt pow sin cos tan atan2 rad deg sign num(x, default) int` |
-| text | `sh(x)` (one shell word, see Values in commands) `str len trim upper lower lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
+| text | `sh(x)` (one shell word, see Values in commands), `enc(x)` (one URL component, see Values in URLs) `str len trim upper lower lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
 | format | `fmtBytes(n)` → `1.5G`, `fmtDuration(seconds)` → `2h 5m`, `fmtTime(seconds, "EEE HH:mm")` |
 | weather | `weatherIcon(code, night)`: omarchy's weather glyph for a wttr.in `weatherCode` (show it with `font: icon`) |
 | parsing | `match(s, regex)` (groups of the first match), `matchAll(s, regex)`, `parseJson(s)` |
@@ -210,7 +233,7 @@ when lists reorder), and `let x = ...` inside any node.
 | `Progress` | `value`, `max` (100), `color`, `track` |
 | `Ring` | circular progress: `value`, `max` (1), `color`, `track`, `thickness` (6), `start`/`sweep` (degrees; `start: 225; sweep: 270` makes a gauge). 64 dp unless sized |
 | `Sparkline` | `values` (a list, usually a `history`), `min` (0), `max`, `color`, `area: true` or a color, `thickness` |
-| `Image` | `src`: an `asset`, a path in this system (`"~/pics/a.png"`) or an Android app's icon (`"app:org.pkg"`, as the drawer shows it, badge included; a silhouette in the foreground color with monochrome icons; `"app:org.pkg@work"` and `"@clone"` ask for the copy in a work profile or the clone, owl 7), `fit: contain/cover/fill`, `tint` |
+| `Image` | `src`: an `asset`, a path in this system (`"~/pics/a.png"`), an `https://` URL (owl 8, see Images from the web) or an Android app's icon (`"app:org.pkg"`, as the drawer shows it, badge included; a silhouette in the foreground color with monochrome icons; `"app:org.pkg@work"` and `"@clone"` ask for the copy in a work profile or the clone, owl 7), `fit: contain/cover/fill`, `tint` |
 | `Canvas` | free drawing, below. Fills the space unless sized |
 | `Shader` | an AGSL shader, below. Fills the space unless sized |
 | `Spacer` | empty space: `size`, `width`, `height` or `weight` |
@@ -247,12 +270,14 @@ the widget that ran it refreshes its sources; other widgets keep their own inter
 | `app("gtk3-demo")` | starts a graphical Linux app |
 | `run("cmd")` | runs in the background (on its own shell, never retried), then refreshes this widget |
 | `x = run("cmd")` | the same, and puts the command's output into the state `x` when it finishes |
-| `androidApp("org.pkg")` | opens an Android app by package name |
+| `androidApp("org.pkg")` | opens an Android app by package name, or by an `android.apps` key to open that copy in a work profile or clone |
 | `copy(text)` | copies text to the Android clipboard |
 | `notify("title", "text")` | posts an Android notification (if the launcher may post them) |
+| `post("https://...", body, headers)` | sends an HTTP POST from Android: a map or list `body` goes as JSON, text as it is; `headers` is a map like `http(...)`'s. `x = post(...)` puts the answer into the state `x` when it arrives: `{code, ok, out}`, with `out` parsed when it's JSON. Never retried; a null URL sends nothing. When it succeeds, the widget's sources run again. See Sending (owl 8) |
 | `url("https://...")` | opens in the Android browser. Other links open in the app that takes them: `tel:` the dialer, `geo:` maps, `mailto:` email |
 | `share(text)` | opens Android's share sheet with the text (owl 7) |
 | `haptic()` | a short tap of haptic feedback, if the user has touch feedback on (owl 7) |
+| `sound("https://…/a.mp3")` | plays a sound once, in place of the one playing; `sound("stop")` stops it. Takes a URL, an asset or a file, like `Image`; see Sounds (owl 8) |
 | `torch(true)` | turns the torch on or off; also `torch("toggle")`. Does nothing on a phone without a flash, or while the camera app holds it (owl 7) |
 | `launcher("style")` | opens a launcher screen: `style` (theme, background, home screen, terminal; `themes` too), `agents`, `store`, `drawer` or `linux` (the sheet that installs Linux) |
 | `refresh()` | re-runs this widget's sources now |
@@ -260,6 +285,70 @@ the widget that ran it refreshes its sources; other widgets keep their own inter
 | `media("toggle")` | controls what's playing: `toggle`, `play`, `pause`, `next`, `previous`, or `open` (brings up the player app) |
 | `volume(50)` | sets the media volume in percent; or `volume("up")`, `"down"`, `"mute"`, `"unmute"`, `"toggle"` (owl 4) |
 | `notification("open", key)` | opens a notification from `android.notifications` as tapping it in the shade would; `"dismiss"` clears it. Without notification access, opens the setting that grants it (owl 4) |
+
+## Images from the web
+
+`Image` and Canvas `image(...)` take an `https://` URL as well as an asset or a file (owl 8). The launcher
+downloads it from Android, so it works without Linux, and keeps it: it shows offline after the first
+time, and is asked for again after a day. PNG, JPEG, WebP and SVG work; an SVG, from a URL, an asset or
+a file, is drawn as shapes, so it's sharp at any size and costs almost nothing to keep.
+
+```owl
+app "flags" {
+  meta { owl: 8 }
+  state code = "se"
+  Image { src: "https://flagcdn.com/${code}.svg"; height: 120; fill: width }
+}
+```
+
+Like `http(...)`, the URLs are listed for whoever reviews the file: `image GET https://flagcdn.com/…`.
+Keep the start of the URL fixed, up to its first `/` after the server, so the server is known; a URL
+built entirely from values is flagged. Plain `http://` isn't loaded.
+
+## Sending
+
+`http(...)` sources only read. For the rest of a web API (signing in, saving a change) a handler sends a
+POST with `post(url, body, headers)` (owl 8). It goes out from Android, so it needs no Linux, once per
+tap. When the server accepts it (a 2xx answer), the widget's sources run again, so what changed shows:
+
+```owl
+app "todo" {
+  meta { owl: 8 }
+  state added = null
+  source items = http("https://api.example.com/items") json
+  on added { notify("todo", value.ok ? "added" : "couldn't add: ${value.code}") }
+  Column {
+    Input { placeholder: "add…"; clear: true; onSubmit: added = post("https://api.example.com/items", {title: value}) }
+    for i in items ?? [] { Text { text: i.title } }
+  }
+}
+```
+
+Handlers have no `if`, so a `post` that only sometimes goes out takes a null URL the rest of the time:
+`every 5s { tok = post(code == "" ? null : "https://…/token", {code: code}) }` polls only while there is a
+code. The URLs are listed for review like `http(...)`'s, as `http POST https://…`, under the same rule:
+keep the server fixed and put values into the URL with `enc(...)`.
+
+## Sounds
+
+`sound(...)` plays a short clip: a chime when a timer ends, a voice reading the next step (owl 8). It takes
+an `https://` URL (downloaded and kept like an image from the web, and listed for review the same way),
+an `asset` or a file in this system; MP3, OGG, WAV and M4A work. It plays at the media volume, and
+music from other apps quietens while it does.
+
+One sound plays at a time per file: a new one replaces it. It stops when the app's window or the screen
+it played in closes. On the home screen only a tap plays one; a trigger (`every`, `at`, `when`, `on`)
+plays sounds only while the app or the widget's screen is open.
+
+```owl
+app "kitchen timer" {
+  meta { owl: 8 }
+  source now = clock every 1s
+  state endsAt = 0
+  at endsAt { sound("https://actions.google.com/sounds/v1/alarms/beep_short.ogg"); endsAt = 0 }
+  Button { text: endsAt > now ? "${endsAt - now}s" : "3 minutes"; onTap: endsAt = now + 180 }
+}
+```
 
 ## Screens
 
@@ -303,6 +392,112 @@ widget "weather" {
 Screens are for showing more, not for building apps: there's no navigation between screens, no
 lists that load as they scroll, and only the nodes above (no maps, web pages or video).
 
+## Apps
+
+A file can also be an app instead of a widget: a screen of its own, listed in the app drawer.
+The nodes at the top are the whole view, with the room and limits of a `screen { }`, and it takes
+the same declarations as a widget (sources, state, lets, components, triggers, `requires`, `meta`).
+There's no tile, so no `size`, `minSize`, `page`, `order`, `padding`, `background`, `onTap` or
+`screen { }`; the properties are `title`, `icon`, `back` (with its `onBack`) and `edge`, and `close()` closes it. Apps need owl 8 and
+run only while open.
+
+```owl
+app "notes" {
+  meta { owl: 8 }
+  title: "notes"                // the window's title; the drawer shows the name
+  icon: """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 5h18l9 9v29H11z"/>
+    <path d="M29 5v9h9M17 24h15M17 32h10"/>
+  </svg>"""
+  state text = "" persist
+  Column {
+    gap: 8
+    padding: [12, 0]           // the view runs to the screen's edges; this is the usual margin
+    Input { text: text; placeholder: "write…"; focus: true; onSubmit: text = value }
+    Text { text: text }
+  }
+}
+```
+
+**Edges.** An app fills the screen below its title, from edge to edge: there's no window border
+and no margin, so the app decides where its content sits. For text, lists and forms, give the top
+node `padding: [12, 0]`, which lines them up with the title. Leave it off (or pad only the parts
+inside) for what should run to the edges, like a photo, a map, a canvas or a bar along the bottom.
+
+**Under the navigation bar.** An app ends above Android's navigation bar (the gesture handle or the
+three buttons). With `edge: true` it runs on under it, like a list that scrolls behind the bar:
+`screenHeight` then reaches the screen's bottom, and `screenInset` is how much of it the bar covers,
+in dp (0 without `edge`, and while the keyboard is up; only apps have it, since a widget's screen ends above the bar). Taps there go to Android, so keep buttons
+and the last row of a list above it: end a scrolling list with `Spacer { height: screenInset }`, and
+pad a view with buttons along its bottom by `screenInset`. `edge` is `true` or `false`, not an expression.
+
+```owl
+app "photos" {
+  meta { owl: 8 }
+  edge: true
+  Column {
+    scroll: true
+    padding: [12, 0]
+    for p in range(40) { Text { text: "photo ${p}" } }
+    Spacer { height: screenInset }   // the last row scrolls up clear of the bar
+  }
+}
+```
+
+**Going back.** An app with views inside it (a list, then one item) says when Back goes up a
+level with `back`, and how with `onBack`. While `back` is true, the window shows a chevron before
+the title, and the chevron, the title and Android's Back run `onBack`; otherwise Back leaves the app.
+`title` is an expression too, so it can name the view that's open:
+
+```owl
+app "recipes" {
+  meta { owl: 8 }
+  state open = ""
+  title: open == "" ? "recipes" : open
+  back: open != ""
+  onBack: open = ""
+  Column {
+    if open == "" {
+      for r in ["soup", "bread"] { Text { text: r; onTap: open = r } }
+    } else {
+      Text { text: "how to make ${open}" }
+    }
+  }
+}
+```
+
+An app is listed in the app drawer (under apps, and in search) by its name. Tapping it opens
+it in its own window, with its own card in recent apps and its `title` (or name). Like any Android app,
+Back leaves it and swiping its card away in recent apps closes it; `close()` closes it too.
+Long-press it in the drawer to add it to home, like any app.
+
+**Icon.** `icon` is the app's icon in the drawer, on home and in recent apps. It's fixed in the
+file rather than an expression, since it's drawn before the app runs, and it's one of two things:
+
+- an SVG in a string, `icon: """<svg ...>...</svg>"""` (under 16 KB). `currentColor` in it becomes
+  the Omarchy theme's accent, so the icon follows theme changes; other colors stay as written.
+- an image, `asset logo = base64"..."` and `icon: logo`: a PNG (or WebP) shown as it is, scaled to
+  fit a square. For a logo or artwork that has its own colors.
+
+Without one, the drawer shows the name's initials. Give every app one. The launcher draws icons
+standalone, on the theme's background, with no plate or frame of its own, so:
+
+- Draw just the symbol, transparent around it: a square `viewBox` (`0 0 48 48`) filled edge to edge
+  by a line drawing in `currentColor`, strokes about 3.5 wide with round caps and joins, like the
+  example above. That's how the store's own apps look, so they sit together in the drawer.
+- A backdrop or frame is yours to add if the icon needs one (a rounded `<rect>` behind the symbol),
+  but most don't.
+- One idea, two or three shapes, readable at 40 dp: a page for notes, arrows for a converter.
+  No text, and no other app's or brand's logo.
+- With monochrome icons on, the launcher draws the icon's bright parts in one color, so the shape
+  has to read by its outline alone.
+
+owl-check doesn't draw the icon; to look at an SVG, render it yourself (for example
+`rsvg-convert -w 192 icon.svg > icon.png`, from `librsvg`).
+
+A widget and an app are separate files and don't share state; a widget that needs a bigger view
+of itself has its own `screen { }`.
+
 ## Components
 
 ```owl
@@ -345,7 +540,7 @@ Canvas {
 | `line(x1, y1, x2, y2)` | |
 | `path(points)` | points are `[x, y]` or `{x, y}`; `closed: true` |
 | `text(s, x, y)` | `size:`, `color:`, `align: start/center/end`, `bold:`; y is the text's middle |
-| `image(src, x, y, w, h)` | |
+| `image(src, x, y, w, h)` | `src` as for `Image`; `color:` paints an SVG in one color |
 | `sprite(rows, x, y, pixel)` | pixel art (owl 3): `rows` is a list of strings, or one `"""` string of lines, with one letter per art pixel and `.` for empty. `palette: {b: accent, e: background}` colors each letter; letters it doesn't name aren't drawn, so one art can be drawn in parts that move separately. Without a palette every letter takes `fill`/`color`. `pixel` is the size of an art pixel in dp; edges land on whole screen pixels, so no seams show |
 | `translate(x, y) { }`, `rotate(deg, cx, cy) { }`, `scale(sx, sy, cx, cy) { }`, `clip(x, y, w, h) { }`, `layer(alpha) { }` | apply to the calls inside |
 
@@ -488,7 +683,7 @@ can't). By hand, open a pull request that adds it as `widgets/<github-username>/
 The store needs:
 
 - `meta` with a `description` (10-200 characters), a `version` and a `license`, and ideally a `category`:
-  `news`, `dev`, `productivity`, `time`, `world`, `fun`, `home` or `system`
+  `news`, `dev`, `productivity`, `time`, `world`, `sport`, `finance`, `media`, `games`, `pets`, `fun`, `home` or `system`
 - every package in `requires`
 - values in commands passed through `sh()` (see Values in commands)
 - nothing personal: no tokens, personal paths or hard-coded location
@@ -509,7 +704,8 @@ links.
 ## Limits
 
 A widget has at most 500 nodes, 2000 drawing calls per frame, lists of 1000
-items, and a step budget per update. A widget that draws slowly animates at
+items, 32 images and 128 SVGs on show at once (a view with more keeps loading them
+again and shows none for long), and a step budget per update. A widget that draws slowly animates at
 half rate. Errors never take the home screen down: the failing value shows `…`
 and the message goes to `.errors/`.
 

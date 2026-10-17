@@ -155,6 +155,7 @@ class Style(
         val CORNER_SCALE = Setting.Number("corners.scale", 0.0, 0.0..2.0, "Multiplies every frame's corner radius: 0 square (Omarchy), 0.5 soft, 1 round like stock Android.")
 
         val STATUS_BAR = Bar("status-bar", "Android's status bar at the top of home")
+        val STATUS_BAR_SHOWN = Setting.Flag("status-bar.shown", true, "Android's status bar on home; false hides it until a swipe down from the top edge.")
         val NAVIGATION_BAR = Bar("navigation-bar", "Android's gesture or button bar on home")
 
         val TERMINAL_FONT = Setting.Text("terminal.font", "JetBrains Mono", "The terminals' font family; fc-list :spacing=100 lists those installed.")
@@ -199,7 +200,7 @@ object StyleFile {
         with(Style) {
             listOf(THEME, BACKGROUND, APP_TILES, RECENT_APPS, GAPS_IN, GAPS_OUT, TILE_BORDER_WIDTH, TILE_BORDER, TILE_BORDER_FOCUSED) +
                 listOf(SCREEN_GAPS_OUT, SCREEN_BORDER_WIDTH, MONOCHROME_ICONS, CORNER_SCALE) +
-                STATUS_BAR.all + NAVIGATION_BAR.all + listOf(TERMINAL_FONT, TERMINAL_TEXT)
+                listOf(STATUS_BAR_SHOWN) + STATUS_BAR.all + NAVIGATION_BAR.all + listOf(TERMINAL_FONT, TERMINAL_TEXT)
         }
 
     private val byKey = ALL.associateBy { it.key }

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.omalauncher.widgets.WidgetEngine
 import dev.omalauncher.widgets.lang.Compiler
+import dev.omalauncher.widgets.lang.OwlKind
 import dev.omalauncher.widgets.market.Paste
 import dev.omalauncher.widgets.market.Share
 import dev.omalauncher.widgets.market.ShareError
@@ -35,7 +36,8 @@ import kotlinx.coroutines.withContext
 /**
  * A widget someone shared as a link or QR code (widgets/market/Share.kt). Nobody reviewed it, so this is
  * the store's widget page with that said first: what it is, what it installs, every command it runs and
- * what in them looks risky, the whole file a tap away, and an agent to read it for you. Only "add to page" puts it on the home screen.
+ * what in them looks risky, the whole file a tap away, and an agent to read it for you. Only "add to page" puts it on the home screen
+ * (for an app, "add to app drawer" puts it in the drawer).
  */
 @Composable
 fun SharedWidgetScreen(
@@ -54,7 +56,9 @@ fun SharedWidgetScreen(
             }
     }
     var showSource by remember(link) { mutableStateOf(false) }
-    OverlayPanel("shared widget", onDismiss, contentWidth = ReadingWidth) {
+    // An app goes in the drawer rather than on a page; known from its first word, even before it compiles.
+    val app = result?.getOrNull()?.let { OwlKind.of(it.text) } == OwlKind.App
+    OverlayPanel(if (app) "shared app" else "shared widget", onDismiss, contentWidth = ReadingWidth) {
         val result = result
         if (result == null) {
             if (Share.pasteId(link) != null) BasicText("fetching it from ${Paste.HOST}…", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Body))
@@ -68,7 +72,7 @@ fun SharedWidgetScreen(
         }
         val p = shared.program
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            BasicText(shared.name.ifEmpty { "a widget" }, style = Mono.copy(fontSize = TextSize.Title))
+            BasicText(shared.name.ifEmpty { if (app) "an app" else "a widget" }, style = Mono.copy(fontSize = TextSize.Title))
             if (p != null) {
                 val size = p.size?.let { " · ${it.first}x${it.second}" } ?: ""
                 val version = shared.version.takeIf { it.isNotEmpty() }?.let { " · v$it" } ?: ""
@@ -89,7 +93,7 @@ fun SharedWidgetScreen(
                 else -> {
                     val same = engine.sharedWidgetIsSame(shared)
                     when (same) {
-                        true -> BasicText("✓ on your home screen", style = Mono.copy(color = Palette.green))
+                        true -> BasicText(if (app) "✓ in your app drawer" else "✓ on your home screen", style = Mono.copy(color = Palette.green))
                         false ->
                             BracketAction("replace the ${shared.name} shared before", Palette.accent) {
                                 scope.launch {
@@ -98,7 +102,7 @@ fun SharedWidgetScreen(
                                 }
                             }
                         null ->
-                            BracketAction("add to page $page", Palette.accent) {
+                            BracketAction(if (app) "add to app drawer" else "add to page $page", Palette.accent) {
                                 scope.launch {
                                     engine.addSharedWidget(shared, page)
                                     onDismiss()

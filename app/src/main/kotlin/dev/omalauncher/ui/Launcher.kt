@@ -63,6 +63,7 @@ import dev.omalauncher.Runtime
 import dev.omalauncher.theme.Style
 import dev.omalauncher.theme.StyleStore
 import dev.omalauncher.widgets.checkSecretsCommand
+import dev.omalauncher.widgets.editWidgetCommand
 import dev.omalauncher.widgets.publishWidgetCommand
 import dev.omalauncher.widgets.reviewSharedWidgetCommand
 import dev.omalauncher.widgets.render.LocalHomeCovered
@@ -159,6 +160,7 @@ private fun DesktopScreen(
             is AppHit.Linux -> runtime.launch(hit.app)
             is AppHit.Android -> runtime.androidApps.open(hit.app)
             is AppHit.Shortcut -> runtime.androidApps.open(hit.shortcut)
+            is AppHit.Owl -> runtime.openOwlApp(hit.spec.file.name)
         }
     }
 
@@ -195,6 +197,7 @@ private fun DesktopScreen(
                         is AppHit.Linux -> runtime.widgets.shortcuts.addLinux(hit.app, state.currentPage)
                         is AppHit.Android -> runtime.widgets.shortcuts.addAndroid(hit.app, state.currentPage)
                         is AppHit.Shortcut -> runtime.widgets.shortcuts.addAndroidShortcut(hit.shortcut, state.currentPage)
+                        is AppHit.Owl -> runtime.widgets.shortcuts.addOwl(hit.spec, state.currentPage)
                     }
                     state.close()
                 },
@@ -210,6 +213,18 @@ private fun DesktopScreen(
                 },
                 // Opening one leaves the drawer at once, as opening an app does; pinning one closes it to show the new tile, as pin does.
                 shortcuts = { app -> shortcutMenu(runtime, app, page = { state.currentPage }, onOpen = state::closeNow, onPinned = state::close) },
+                edit = { spec ->
+                    state.closeNow()
+                    val agent = runtime.agents.default
+                    if (agent == null) state.show(SettingsPage.Agents) else runtime.terminal(editWidgetCommand(agent.bin, spec), "Edit ${spec.name}", agent)
+                },
+                // The same screen a widget is shared from: a link or QR code, or the store.
+                share = { spec ->
+                    state.closeNow()
+                    state.sharing = spec
+                },
+                // Its file goes to .removed/, as a removed widget's does.
+                removeOwl = { spec -> runtime.widgets.removeWidget(spec) },
             )
         }
 

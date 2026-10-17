@@ -1,5 +1,6 @@
 package dev.omalauncher.widgets.lang
 
+import java.net.URLEncoder
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -70,7 +71,7 @@ object Builtins {
     val constants = mapOf("pi" to Num(PI), "transparent" to Col(null, 0))
 
     /** Handler-only calls; they reach [Host.act]. */
-    val actions = mapOf("terminal" to 1..2, "app" to 1..1, "run" to 1..1, "url" to 1..1, "launcher" to 1..1, "refresh" to 0..1, "media" to 1..1, "androidApp" to 1..1, "copy" to 1..1, "notify" to 1..2, "volume" to 1..1, "notification" to 2..2, "screen" to 0..0, "close" to 0..0, "torch" to 1..1, "share" to 1..1, "haptic" to 0..0)
+    val actions = mapOf("terminal" to 1..2, "app" to 1..1, "run" to 1..1, "post" to 1..3, "url" to 1..1, "launcher" to 1..1, "refresh" to 0..1, "media" to 1..1, "androidApp" to 1..1, "copy" to 1..1, "notify" to 1..2, "volume" to 1..1, "notification" to 2..2, "screen" to 0..0, "close" to 0..0, "torch" to 1..1, "share" to 1..1, "haptic" to 0..0, "sound" to 1..1)
 
     private fun lst(items: List<Value>) = Lst(if (items.size > MAX_LIST) items.subList(0, MAX_LIST) else items)
 
@@ -317,6 +318,8 @@ object Builtins {
             "replace" to Builtin(3, 3) { a -> Str(a.str(0).replace(a.str(1), a.str(2))) },
             // owl 6: a value as one shell word, for commands put together while the widget runs.
             "sh" to Builtin(1, 1) { a -> Str(shQuote(a[0].let { if (it == Null) "" else it.text() })) },
+            // owl 8: a value as one URL component, for http(...) URLs put together while the widget runs.
+            "enc" to Builtin(1, 1) { a -> Str(URLEncoder.encode(a[0].let { if (it == Null) "" else it.text() }, "UTF-8").replace("+", "%20")) },
             "startsWith" to Builtin(2, 2) { a -> bool(a.str(0).startsWith(a.str(1))) },
             "endsWith" to Builtin(2, 2) { a -> bool(a.str(0).endsWith(a.str(1))) },
             "contains" to

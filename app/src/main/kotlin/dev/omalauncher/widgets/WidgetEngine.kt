@@ -2,6 +2,7 @@ package dev.omalauncher.widgets
 
 import android.content.Context
 import android.os.FileObserver
+import android.util.Log
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -25,6 +26,7 @@ import dev.omalauncher.upgrade.Policy
 import dev.omalauncher.widgets.lang.CompileError
 import dev.omalauncher.widgets.lang.Compiler
 import dev.omalauncher.widgets.lang.Json
+import dev.omalauncher.widgets.lang.OwlKind
 import dev.omalauncher.widgets.lang.Program
 import dev.omalauncher.widgets.lang.Source
 import dev.omalauncher.widgets.market.Review
@@ -35,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
@@ -56,8 +59,10 @@ class WidgetSpec(
     val minSize: Pair<Int, Int> = 1 to 1,
     /** The file's modification time when it was compiled; unchanged files aren't recompiled. */
     val stamp: Long = 0,
+    /** A home tile or an app in the drawer; known from the first word even when it doesn't compile. */
+    val kind: OwlKind = OwlKind.Widget,
 ) {
-    fun onPage(page: Int) = WidgetSpec(file, name, page, order, program, error, size, minSize, stamp)
+    fun onPage(page: Int) = WidgetSpec(file, name, page, order, program, error, size, minSize, stamp, kind)
 }
 
 /**
@@ -102,8 +107,9 @@ class WidgetEngine(
     /** The home screen's view, for haptic(); set by the UI. */
     var view by services::view
 
-    /** The widget store. */
-    val market = Market(this)
+    /** The store's widgets, and its apps. */
+    val market = Market(this, OwlKind.Widget)
+    val appMarket = Market(this, OwlKind.App)
 
     /** Widgets whose packages the user already agreed to (store installs): install them without asking again. */
     private val autoInstall = HashSet<String>()
@@ -165,6 +171,36 @@ class WidgetEngine(
     /** File name of the widget whose screen { } is open, full screen over home; see [screenInstance]. */
     var openScreen by mutableStateOf<String?>(null)
 
+    /** [name] is a running app, which opens in its own task (OwlAppActivity). */
+    fun isApp(name: String) = instances[name]?.program?.kind == OwlKind.App
+
+    /** A running app with its spec, for its activity; null once it's removed or stops compiling. */
+    fun appInstance(name: String): Pair<WidgetSpec, WidgetInstance>? {
+        val spec = specs.firstOrNull { it.file.name == name && it.kind == OwlKind.App } ?: return null
+        return instances[name]?.takeIf { it.program.kind == OwlKind.App }?.let { spec to it }
+    }
+
+    /** Apps whose activity is started, by file name: a count, like [started]. They stay live while the home screen isn't showing. */
+    private val shownApps = mutableStateMapOf<String, Int>()
+
+    fun appStarted(name: String) {
+        shownApps[name] = (shownApps[name] ?: 0) + 1
+    }
+
+    fun appStopped(name: String) {
+        val n = (shownApps[name] ?: 0) - 1
+        if (n > 0) shownApps[name] = n else shownApps.remove(name)
+    }
+
+    /** Apps that ran close(): their activity closes. */
+    val appCloses = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /** App files that compile and can run here, for the app drawer. */
+    fun apps(): List<WidgetSpec> = specs.filter { it.kind == OwlKind.App && it.program != null && !waitsForLinux(it) }
+
+    /** A tile on a home page: a widget, not an app. */
+    fun onHome(spec: WidgetSpec) = spec.kind == OwlKind.Widget
+
     /** The running widget whose screen is open, with its spec (for the title fallback). */
     fun screenInstance(): Pair<WidgetSpec, WidgetInstance>? {
         val name = openScreen ?: return null
@@ -213,7 +249,8 @@ class WidgetEngine(
     /** The user (or their agent) wrote it: not shipped with the app, installed from the store, shared with them, or an agent's tile. */
     fun isOwnWidget(spec: WidgetSpec): Boolean {
         val name = spec.file.name
-        return name !in bundledFiles && !name.startsWith("agent-") && !name.startsWith(TERMINAL_PREFIX) && !name.startsWith("shared-") && market.installed.values.none { it.file == name }
+        return name !in bundledFiles && !name.startsWith("agent-") && !name.startsWith(TERMINAL_PREFIX) && !name.startsWith("shared-") &&
+            listOf(market, appMarket).none { m -> m.installed.values.any { it.file == name } }
     }
 
     /** [agent]'s terminal tile is on the home screen. */
@@ -269,14 +306,15 @@ class WidgetEngine(
     }
 
     /**
-     * Takes a widget off the home screen. Its file moves to .removed/ rather than
-     * being deleted: it may be an agent's work, and this is easy to undo by hand.
+     * Takes a widget off the home screen, or an app out of the drawer (and its icon off home). Its file moves to
+     * .removed/ rather than being deleted: it may be an agent's work, and this is easy to undo by hand.
      */
     fun removeWidget(spec: WidgetSpec) {
         val trash = File(dir, ".removed").apply { mkdirs() }
         spec.file.renameTo(File(trash, spec.file.name))
         instances.remove(spec.file.name)?.stop()
         if (openScreen == spec.file.name) openScreen = null
+        shortcuts.removeOwl(spec)
         specs.remove(spec)
         forget(spec.file.name)
     }
@@ -292,10 +330,10 @@ class WidgetEngine(
     }
 
     /** Widgets, pinned apps and folders on [page]. Wrappers compare by spec, so unchanged pages skip recomposition. */
-    fun itemsOn(page: Int): List<HomeItem> = specs.filter { it.page == page }.map(::WidgetItem) + shortcuts.onGrid().filter { it.page == page }
+    fun itemsOn(page: Int): List<HomeItem> = specs.filter { it.page == page && onHome(it) }.map(::WidgetItem) + shortcuts.onGrid().filter { it.page == page }
 
     private val pageList by derivedStateOf {
-        (specs.map { it.page } + shortcuts.onGrid().map { it.page }).distinct().sorted().ifEmpty { listOf(1) }
+        (specs.filter(::onHome).map { it.page } + shortcuts.onGrid().map { it.page }).distinct().sorted().ifEmpty { listOf(1) }
     }
 
     val pages: List<Int> get() = pageList
@@ -329,6 +367,7 @@ class WidgetEngine(
                 inboxDir.deleteRecursively()
                 inboxDir.mkdirs()
                 market.load()
+                appMarket.load()
             }
             // owl-check asks for a preview the launcher hasn't made yet by writing the file's hash to <file>.want.
             checkObserver =
@@ -338,8 +377,10 @@ class WidgetEngine(
                         path: String?,
                     ) {
                         if (path != null && path.endsWith(".themes") && BuildConfig.DEBUG) {
-                            File(checkDir, path).delete()
-                            scope.launch { previewThemes(path.removeSuffix(".themes")) }
+                            val file = File(checkDir, path)
+                            val screens = runCatching { file.readLines() }.getOrDefault(emptyList()).map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }
+                            file.delete()
+                            scope.launch { previewThemes(path.removeSuffix(".themes"), screens) }
                             return
                         }
                         if (path == null || !path.endsWith(".want")) return
@@ -410,8 +451,15 @@ class WidgetEngine(
                     services,
                     { message -> writeError(spec.file, message, append = true) },
                     File(stateDir, "$name.json"),
-                    onScreen = { open -> if (open) openScreen = name else if (openScreen == name) openScreen = null },
+                    onScreen = { open ->
+                        when {
+                            program.kind == OwlKind.App -> if (!open) appCloses.tryEmit(name)
+                            open -> openScreen = name
+                            openScreen == name -> openScreen = null
+                        }
+                    },
                     linux = { linux },
+                    foreground = { (shownApps[name] ?: 0) > 0 || openScreen == name },
                 )
             prev?.let(inst::adopt)
             instances[spec.file.name] = inst
@@ -496,6 +544,7 @@ class WidgetEngine(
             }
         if (skip != null) return writeCheck(spec.file, hash, "ok", "preview-skipped $hash $skip")
         val inst = instance(spec)!!
+        if (program.kind != OwlKind.Widget) return previewView(spec, inst, hash)
         val cells = layout.cell(name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, GRID_COLUMNS) to h.coerceAtLeast(1) } ?: (3 to 3)
         val (w, h) = layout.tilePx(cells, context.resources.displayMetrics)
         previewing += name
@@ -521,13 +570,40 @@ class WidgetEngine(
         writeCheck(spec.file, hash, "ok", listOfNotNull(line, screen).joinToString("\n"))
     }
 
+    /** An app has no tile: its view is drawn at the phone's size, as it opens, and noted as its screen. */
+    private suspend fun previewView(
+        spec: WidgetSpec,
+        inst: WidgetInstance,
+        hash: String,
+    ) {
+        val name = spec.file.name
+        val dm = context.resources.displayMetrics
+        previewing += name
+        val ok =
+            try {
+                previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, File(previewDir, "$name.screen.png"), { snapshotFlow { inst.loaded() }.first { it } })
+            } finally {
+                previewing.remove(name)
+            }
+        if (hashes[name] != hash) return
+        val tile = "preview-skipped $hash an app has no tile"
+        writeCheck(spec.file, hash, "ok", if (ok) "$tile\nscreen $hash ${dm.widthPixels}x${dm.heightPixels}" else "$tile; rendering its screen failed")
+    }
+
     /**
      * Debug builds, for the widget store's per-theme previews (scripts/store-previews.sh): once
      * [name]'s sources have loaded, renders its tile in every bundled Omarchy theme to
-     * .preview/themes/<theme>/<file>.png, then writes .preview/themes/<file>.done. Asked for by
+     * .preview/themes/<theme>/<file>.png (an app: its view at the phone's size), then writes .preview/themes/<file>.done. Asked for by
      * writing .check/<file>.themes. The whole launcher takes each theme's colors while it runs.
+     *
+     * An app can be shown on several [screens], one per line of the .themes file: the states to set before it's drawn,
+     * as `view = "watch"; openId = ""`, in order; `wait = 60` pauses that many seconds there. Each starts from the screen
+     * before it. The first is <file>.png, the rest <file>.<n>.png.
      */
-    private suspend fun previewThemes(name: String) {
+    private suspend fun previewThemes(
+        name: String,
+        screens: List<String> = emptyList(),
+    ) {
         val spec = specs.firstOrNull { it.file.name == name } ?: return
         val inst = instance(spec) ?: return
         val cells = layout.cell(name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, GRID_COLUMNS) to h.coerceAtLeast(1) } ?: (3 to 3)
@@ -539,9 +615,32 @@ class WidgetEngine(
         try {
             val loaded: suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
             withTimeoutOrNull(30_000) { loaded() }
-            for (theme in themes) {
-                Palette.apply(theme.colors)
-                previews.render(spec, inst, cells, w, h, File(dir, "${theme.name}/$name.png"), loaded)
+            val dm = context.resources.displayMetrics
+            for ((n, screen) in screens.ifEmpty { listOf("") }.withIndex()) {
+                for ((state, value) in assignments(screen)) {
+                    // wait = <seconds> pauses first, for an API that limits calls a minute.
+                    if (state == "wait") {
+                        delay((value.toDoubleOrNull() ?: 0.0).coerceIn(0.0, 300.0).times(1000).toLong())
+                        continue
+                    }
+                    inst.setState(state, Json.parseOrText(value))?.let { Log.w("widgets", "preview screen ${n + 1} of $name: $it") }
+                }
+                // What the new screen fetches starts now; give it time before the first theme is drawn.
+                if (screen.isNotEmpty()) {
+                    delay(SCREEN_SETTLE_MS)
+                    withTimeoutOrNull(30_000) { loaded() }
+                }
+                // Waited for once a screen: a source that never loads would otherwise hold up every theme.
+                val ready: suspend () -> Unit = {}
+                for (theme in themes) {
+                    Palette.apply(theme.colors)
+                    val out = File(dir, "${theme.name}/$name${if (n > 0) ".${n + 1}" else ""}.png")
+                    if (spec.kind == OwlKind.App) {
+                        previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, out, ready)
+                    } else {
+                        previews.render(spec, inst, cells, w, h, out, ready)
+                    }
+                }
             }
         } finally {
             Palette.restore(before)
@@ -550,13 +649,20 @@ class WidgetEngine(
         withContext(Dispatchers.IO) { File(dir, "$name.done").writeText("${cells.first}x${cells.second} ${w}x$h\n") }
     }
 
+    /** A preview screen's `name = value; name = value` pairs; a value is JSON (a quoted string, a number, true) or plain text. */
+    private fun assignments(screen: String) = SCREEN_STATE.findAll(screen).map { it.groupValues[1] to it.groupValues[2].trim() }.toList()
+
     private fun isLive(spec: WidgetSpec): Boolean {
         if (!missing[spec.file.name].isNullOrEmpty()) return false
         // A preview needs real values, even while the home screen is hidden behind the agent's terminal.
         if (spec.file.name in previewing) return true
+        // An app in its own task: live while that's showing, whatever home does.
+        if ((shownApps[spec.file.name] ?: 0) > 0) return true
         if (!visible) return false
         // Its screen is open: it's on screen wherever the pages are.
         if (spec.file.name == openScreen) return true
+        // Apps have no page to be near.
+        if (!onHome(spec)) return false
         val pages = pages
         val here = pages.indexOf(activePage)
         val there = pages.indexOf(spec.page)
@@ -575,14 +681,16 @@ class WidgetEngine(
         return try {
             val p = Compiler.compile(text)
             writeError(file, null)
+            // Advice, after the clear and before the check result, so owl-check prints it with the rest.
+            for (w in p.warnings) writeError(file, "warning: $w", append = true)
             writeCheck(file, hash, "ok")
-            WidgetSpec(file, p.name, layout.page(file.name) ?: p.page, p.order, p, null, p.size, p.minSize, stamp)
+            WidgetSpec(file, p.name, layout.page(file.name) ?: p.page, p.order, p, null, p.size, p.minSize, stamp, p.kind)
         } catch (e: CompileError) {
-            broken(file, previous, stamp, Source(text).format(e), hash)
+            broken(file, previous, stamp, Source(text).format(e), hash, OwlKind.of(text))
         } catch (e: RuntimeException) {
-            broken(file, previous, stamp, e.toString(), hash)
+            broken(file, previous, stamp, e.toString(), hash, OwlKind.of(text))
         } catch (e: StackOverflowError) {
-            broken(file, previous, stamp, "too deeply nested", hash)
+            broken(file, previous, stamp, "too deeply nested", hash, OwlKind.of(text))
         }
     }
 
@@ -593,10 +701,11 @@ class WidgetEngine(
         stamp: Long,
         error: String,
         hash: String,
+        kind: OwlKind = previous?.kind ?: OwlKind.Widget,
     ): WidgetSpec {
         writeError(file, error)
         writeCheck(file, hash, "error")
-        return WidgetSpec(file, file.nameWithoutExtension, previous?.page ?: 1, previous?.order ?: 999, null, error, previous?.size, previous?.minSize ?: (1 to 1), stamp)
+        return WidgetSpec(file, file.nameWithoutExtension, previous?.page ?: 1, previous?.order ?: 999, null, error, previous?.size, previous?.minSize ?: (1 to 1), stamp, kind)
     }
 
     /** Error files are written in order: a clear must never land after the error that follows it. */
@@ -736,6 +845,12 @@ class WidgetEngine(
             }
 
     companion object {
+        /** A store preview screen's `name = value`, up to the next `;` outside quotes. */
+        private val SCREEN_STATE = Regex("""(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|[^;]+)""")
+
+        /** How long a store preview screen gets to fetch what it shows before its sources count as loaded. */
+        private const val SCREEN_SETTLE_MS = 3_000L
+
         /** The default terminal tile, which [addTerminalWidget] copies. */
         private const val TERMINAL_ASSET = "45-terminal.owl"
         private const val TERMINAL_PREFIX = "terminal-"
@@ -745,9 +860,10 @@ class WidgetEngine(
 
         private const val AGENT_POINTER =
             "# omalauncher\n\nThis Arch system runs inside an Android launcher. Home-screen widgets are `.owl` files in " +
-                "~/$GUEST_DIR, written in a small declarative language documented in README.md there. " +
+                "~/$GUEST_DIR, written in a small declarative language documented in README.md there; so are apps for the " +
+                "app drawer (`app \"name\" { }`). " +
                 "Saved files show up on the phone within seconds. After saving, run `owl-check <file>`: it prints the errors " +
-                "and the path of a PNG of the tile, drawn with live data; look at it to check the layout. " +
+                "and the path of a PNG of the tile or view, drawn with live data; look at it to check the layout. " +
                 "examples/ holds more widgets to learn from or move up to use. Scripts, cron jobs and hooks can set a running " +
                 "widget's state or refresh it with `owl-send <file> set <state> <value>` and `owl-send <file> refresh`.\n\n" +
                 "The launcher's look (theme, background, tile spacing and borders, corners, the system bars' colors, the " +

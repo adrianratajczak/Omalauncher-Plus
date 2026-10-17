@@ -35,6 +35,8 @@ import dev.omalauncher.widgets.lang.Lst
 import dev.omalauncher.widgets.lang.Null
 import dev.omalauncher.widgets.lang.Num
 import dev.omalauncher.widgets.lang.Obj
+import dev.omalauncher.widgets.lang.TRUE
+import dev.omalauncher.widgets.lang.FALSE
 import dev.omalauncher.widgets.lang.Program
 import dev.omalauncher.widgets.lang.Sprite
 import dev.omalauncher.widgets.lang.Str
@@ -51,11 +53,16 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.cancelChildren
 import java.io.File
 
 /** What widgets need from the launcher: guest commands, Android data and actions. */
@@ -65,12 +72,33 @@ interface Services {
         timeoutSeconds: Int,
     ): ShellResult
 
-    /** An HTTP GET from Android, not the guest: [ShellResult.code] is the HTTP status, or -1 if the request failed. */
+    /**
+     * An HTTP request from Android, not the guest: a GET, or a POST of [body] for `post(...)`.
+     * [ShellResult.code] is the HTTP status, or -1 if the request failed.
+     */
     suspend fun http(
         url: String,
         headers: Map<String, String>,
         timeoutSeconds: Int,
+        body: ByteArray? = null,
     ): ShellResult
+
+    /**
+     * A file from the web, for `Image { src: "https://..." }` and `sound("https://...")`: kept on disk,
+     * so it works offline after the first time; null if it can't be downloaded and was never kept.
+     */
+    suspend fun remoteFile(url: String): File? = null
+
+    /**
+     * `sound(...)`: plays [file] or [bytes] for [owner], in place of what it was playing; both null
+     * stops it. [failed] hears why one couldn't play.
+     */
+    fun sound(
+        owner: Any,
+        file: File?,
+        bytes: ByteArray?,
+        failed: (String) -> Unit = {},
+    ) {}
 
     /** Runs [command] for `x = run(...)`; [done] gets the result, or null if the command couldn't run. */
     fun run(
@@ -131,6 +159,8 @@ class WidgetInstance(
     private val onScreen: (Boolean) -> Unit = {},
     /** Linux is installed and running; `optional` sources wait for it. Snapshot state. */
     private val linux: () -> Boolean = { true },
+    /** An app's window or the widget's screen is showing. Snapshot state. */
+    private val foreground: () -> Boolean = { false },
 ) : Host {
     override val budget = Budget()
     val root = Env.root(this)
@@ -144,7 +174,7 @@ class WidgetInstance(
     @Volatile private var parkedTime = 0.0
     private val cells = arrayOfNulls<State<Value>>(program.globals.size)
     /** Decoded images by src, filled in off the main thread; see [image]. */
-    private val images = mutableStateMapOf<String, ImageBitmap?>()
+    private val images = mutableStateMapOf<String, WidgetImage?>()
 
     /** Modification times the images were decoded at; written by the decoding thread. */
     private val imageStamps = ConcurrentHashMap<String, Long>()
@@ -307,6 +337,13 @@ class WidgetInstance(
         screenSize.value = listOf(widthDp, heightDp)
     }
 
+    /** How much of the screen's bottom the navigation bar covers, in dp: only an app with `edge` draws there. */
+    private val screenInset = mutableDoubleStateOf(0.0)
+
+    fun setScreenInset(dp: Double) {
+        screenInset.doubleValue = dp
+    }
+
     override fun tile(name: String): Value {
         val v =
             when (name) {
@@ -314,6 +351,7 @@ class WidgetInstance(
                 "corners" -> return Num(LauncherStyle.cornerScale.toDouble())
                 "screenWidth" -> screenSize.value[0]
                 "screenHeight" -> screenSize.value[1]
+                "screenInset" -> screenInset.doubleValue
                 "cols" -> tileSize.value[0]
                 "rows" -> tileSize.value[1]
                 "tileWidth" -> tileSize.value[2]
@@ -343,6 +381,31 @@ class WidgetInstance(
         }
     }
 
+    override fun post(
+        url: String,
+        body: Value,
+        headers: Map<String, String>,
+        slot: Int?,
+    ) {
+        // A map or list goes as JSON, anything else as its text.
+        val json = if (body is Obj || body is Lst) Json.write(body) else null
+        val bytes = (json ?: if (body == Null) "" else body.toString()).toByteArray()
+        val sent = if (json != null && headers.keys.none { it.equals("Content-Type", true) }) headers + ("Content-Type" to "application/json") else headers
+        val scope = scope ?: return
+        scope.launch {
+            val r = services.http(url, sent, POST_TIMEOUT_S, bytes)
+            val ok = r.code in 200..299
+            // `x = post(...)` gets the answer and handles it (a sign-in polled while pending is a 400 each time).
+            if (!ok && slot == null) report("post: ${if (r.code > 0) "HTTP ${r.code}" else "request failed"}: ${r.err}")
+            if (slot != null) {
+                write(slot, Obj(mapOf("code" to Num(r.code.toDouble()), "ok" to if (ok) TRUE else FALSE, "out" to if (r.out.isEmpty()) Null else Json.parseOrText(r.out))))
+            }
+            // What it changed shows in this widget's sources. A refusal changed nothing: a sign-in polled
+            // until it's approved mustn't fetch everything again each time.
+            if (ok) refresh()
+        }
+    }
+
     override fun act(
         name: String,
         args: List<Value>,
@@ -353,6 +416,10 @@ class WidgetInstance(
         }
         if (name == "screen" || name == "close") {
             onScreen(name == "screen")
+            return
+        }
+        if (name == "sound") {
+            args.firstOrNull()?.takeIf { it != Null }?.let { sound(it.toString()) }
             return
         }
         // Only this widget refreshes afterwards; the others keep their own intervals.
@@ -421,36 +488,50 @@ class WidgetInstance(
      * The image for [src], or null until it's decoded, which happens off the
      * main thread and at most at widget size. A guest file is checked again
      * (a stat; decoded only if it changed) whenever a source updates, so a
-     * file a command rewrites (a cover, a chart) shows its new content. Safe
-     * to call while drawing: it only reads state.
+     * file a command rewrites (a cover, a chart) shows its new content. An
+     * https URL comes through the launcher's image cache, and one that failed
+     * is tried again then too. Safe to call while drawing: it only reads state.
      */
-    fun image(src: String): ImageBitmap? {
+    fun image(src: String): WidgetImage? {
         // The launcher already holds every app's icon, as snapshot state: reading it redraws once it loads.
-        if (src.startsWith("app:")) return services.appIcon(src.removePrefix("app:"))
+        if (src.startsWith("app:")) return services.appIcon(src.removePrefix("app:"))?.let { WidgetImage.Raster(it) }
         // Album art changes with every track: Android holds the current one. Only its wrapper is
         // kept, so asking again for the same art gives the same image and redraws nothing.
         if (src.startsWith("media:")) {
             val art = services.androidImage(src) ?: return null
             mediaArt?.takeIf { it.first === art }?.let { return it.second }
-            return art.asImageBitmap().also { mediaArt = art to it }
+            return WidgetImage.Raster(art.asImageBitmap()).also { mediaArt = art to it }
         }
         if (src !in imageRequests) {
             // Not from inside a draw: that would write state while drawing.
             scope?.launch {
-                // A src that changes (a cover per track) mustn't keep every image it ever showed.
-                if (imageRequests.size >= MAX_IMAGES) {
-                    imageRequests.clear()
-                    images.clear()
-                    imageStamps.clear()
-                }
-                if (imageRequests.add(src)) loadImage(src)
+                if (src in imageRequests) return@launch
+                // A src that changes (a cover per track) mustn't keep every image it ever showed: at most
+                // MAX_IMAGES bitmaps and MAX_VECTORS SVGs, which are small whatever size they're drawn at.
+                val vector = isVector(src)
+                val vectors = imageRequests.count(::isVector)
+                if (if (vector) vectors >= MAX_VECTORS else imageRequests.size - vectors >= MAX_IMAGES) forget { isVector(it) == vector }
+                imageRequests.add(src)
+                loadImage(src)
             }
         }
         return images[src]
     }
 
-    /** The album art last asked for, and its ImageBitmap; main thread only. */
-    private var mediaArt: Pair<Bitmap, ImageBitmap>? = null
+    /** Whether [src] is an SVG: decoded as one, or, until it's loaded, named like one. */
+    private fun isVector(src: String) = images[src]?.let { it is WidgetImage.Vector } ?: src.substringBefore('?').endsWith(".svg", ignoreCase = true)
+
+    private fun forget(which: (String) -> Boolean) {
+        val gone = imageRequests.filter(which)
+        imageRequests.removeAll(gone.toSet())
+        for (src in gone) {
+            images.remove(src)
+            imageStamps.remove(src)
+        }
+    }
+
+    /** The album art last asked for, and its image; main thread only. */
+    private var mediaArt: Pair<Bitmap, WidgetImage.Raster>? = null
 
     /** When guest image files were last checked for changes, in elapsed milliseconds. */
     private var imagesChecked = 0L
@@ -458,27 +539,46 @@ class WidgetInstance(
     private fun loadImage(src: String) {
         val scope = scope ?: return
         scope.launch {
-            val file = if (src.startsWith("asset:")) null else services.guestFile(src)
+            val remote = src.startsWith("https://")
+            // The cache keeps a downloaded image fresh; one that loaded stays for as long as the widget runs.
+            if (remote && images[src] != null) return@launch
+            val file = if (src.startsWith("asset:") || remote) null else services.guestFile(src)
             val decoded =
                 withContext(Dispatchers.IO) {
                     val stamp = file?.lastModified() ?: 0L
-                    if (imageStamps[src] == stamp) return@withContext null
+                    if (!remote && imageStamps[src] == stamp) return@withContext null
                     imageStamps[src] = stamp
-                    runCatching {
-                        if (file == null) {
-                            val bytes = (program.globals.firstOrNull { it.name == src.removePrefix("asset:") } as? Global.Asset)?.bytes
-                            bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
-                        } else {
-                            file.takeIf { it.length() < 8 shl 20 }?.let { decodeSampled(it, MAX_IMAGE_SIDE / 2) }
-                        }
-                        // A small PNG can hold a huge flat image; drawing one over Android's limit throws on every frame.
-                    }.getOrNull()?.takeIf { it.byteCount <= MAX_IMAGE_BYTES }.let { Result.success(it) }
+                    Result.success(runCatching { decode(src, file) }.getOrNull())
                 } ?: return@launch
-            val bitmap = decoded.getOrNull()
-            if (bitmap == null) report("image '$src' couldn't be loaded")
-            images[src] = bitmap?.asImageBitmap()
+            val image = decoded.getOrNull()
+            if (image == null) report(if (remote) "image '$src' couldn't be downloaded, or isn't an image" else "image '$src' couldn't be loaded")
+            images[src] = image
         }
     }
+
+    /** [src]'s image, from its asset, the web or a guest [file]; off the main thread. */
+    private suspend fun decode(
+        src: String,
+        file: File?,
+    ): WidgetImage? {
+        val bytes =
+            when {
+                file != null -> {
+                    if (file.length() >= MAX_FILE_BYTES) return null
+                    val head = ByteArray(64)
+                    val n = file.inputStream().use { it.read(head) }
+                    if (n <= 0 || !isSvg(head.copyOf(n))) return raster(decodeSampled(file, MAX_IMAGE_SIDE / 2))
+                    file.readBytes()
+                }
+                src.startsWith("https://") -> if (program.level < 8) return null else services.remoteFile(src)?.readBytes() ?: return null
+                else -> (program.globals.firstOrNull { it.name == src.removePrefix("asset:") } as? Global.Asset)?.bytes ?: return null
+            }
+        if (isSvg(bytes)) return if (bytes.size <= MAX_SVG_BYTES) decodeSvg(bytes)?.let { WidgetImage.Vector(it) } else null
+        return raster(if (src.startsWith("https://")) decodeSampled(bytes, MAX_IMAGE_SIDE / 2) else BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+    }
+
+    // A small PNG can hold a huge flat image; drawing one over Android's limit throws on every frame.
+    private fun raster(bitmap: Bitmap?) = bitmap?.takeIf { it.byteCount <= MAX_IMAGE_BYTES }?.let { WidgetImage.Raster(it.asImageBitmap()) }
 
     /** Keeps values of sources and state across a reload of the same file, so saving doesn't flash "…". */
     fun adopt(old: WidgetInstance) {
@@ -496,7 +596,10 @@ class WidgetInstance(
     }
 
     /** Every source has a value; what a preview waits for. Reads state, so it can be observed. */
-    fun loaded() = program.globals.indices.all { program.globals[it] !is Global.Source || read(it) != Null }
+    fun loaded() = program.globals.indices.all { program.globals[it] !is Global.Source || read(it) != Null || paused[it] == true }
+
+    /** Sources whose command or URL is null: they wait without a value, and count as loaded. */
+    private val paused = mutableStateMapOf<Int, Boolean>()
 
     /** Bumped by refresh(); each source loop wakes early when it changes. */
     private val refreshes = MutableStateFlow(0)
@@ -512,6 +615,15 @@ class WidgetInstance(
         active: () -> Boolean,
     ) {
         this.scope = scope
+        // A sound stops with the app's window or the screen it played in.
+        jobs +=
+            scope.launch {
+                var shown = foreground()
+                snapshotFlow { foreground() }.collect { now ->
+                    if (shown && !now) services.sound(this@WidgetInstance, null, null)
+                    shown = now
+                }
+            }
         if (persisted.isNotEmpty() && savedFile != null) {
             // At most one write every few seconds, however fast the sources sample.
             jobs +=
@@ -527,6 +639,11 @@ class WidgetInstance(
             if (g !is Global.Source) return@forEachIndexed
             jobs +=
                 scope.launch {
+                    // The command or URL a cmd or http source last ran, and when; whether it must run again now.
+                    var last: Value? = null
+                    var lastAt = 0L
+                    var lastWait = 0L
+                    var due = true
                     while (isActive) {
                         snapshotFlow { active() }.first { it }
                         if (g.optional && !linux()) {
@@ -562,15 +679,34 @@ class WidgetInstance(
                                 }
                             else -> {
                                 val seen = refreshes.value
-                                val start = System.currentTimeMillis()
-                                update(slot, g)
+                                val built = g.arg?.takeIf { it.const == null }
+                                val arg = built?.let { eval(it, root, g.name) }
+                                if (arg == Null) {
+                                    // A null command or URL pauses the source, keeping its value, until it's something again.
+                                    paused[slot] = true
+                                    untilPaused(active, g) { snapshotFlow { eval(built, root, g.name) }.first { it != Null } }
+                                    paused.remove(slot)
+                                    due = false
+                                    continue
+                                }
                                 // An interval of NaN ("NaN" is a number) would be 0: a % by zero for a clock, a busy loop otherwise.
                                 val wait = (g.every * 1000).toLong().coerceAtLeast(100)
+                                // Back to what it last ran, within the interval (a tab shown again): its value still holds.
+                                if (due || arg != last || System.currentTimeMillis() >= lastAt + lastWait) {
+                                    last = arg
+                                    lastAt = System.currentTimeMillis()
+                                    // A failed fetch (offline, or a server's rate limit) is tried again in half a minute.
+                                    lastWait = if (update(slot, g)) wait else minOf(wait, RETRY_MS)
+                                }
                                 // Clocks tick on the second (or minute) boundary so displays change in step;
                                 // other intervals count from the start of the update, however long it took.
-                                val target = if (g.kind == "clock") wait - System.currentTimeMillis() % wait else (start + wait - System.currentTimeMillis()).coerceAtLeast(0)
-                                // Sleeps until the interval is up, or a refresh() wakes it early.
-                                withTimeoutOrNull(target) { refreshes.first { it != seen } }
+                                val target = if (g.kind == "clock") wait - System.currentTimeMillis() % wait else (lastAt + lastWait - System.currentTimeMillis()).coerceAtLeast(0)
+                                // Sleeps until the interval is up, a refresh() wakes it early, or what it runs changes
+                                // (a coin tapped, a tab opened): then it runs at once, not at the next interval.
+                                val changed = built?.let { snapshotFlow { eval(it, root, g.name) }.filter { v -> v != arg }.map { false } } ?: emptyFlow()
+                                due = withTimeoutOrNull(target) { merge(refreshes.filter { it != seen }.map { true }, changed).first() } ?: true
+                                // A command built from something that changes all the time runs at most once a second.
+                                if (built != null && !due) delay((lastAt + MIN_RERUN_MS - System.currentTimeMillis()).coerceAtLeast(0))
                             }
                         }
                     }
@@ -686,7 +822,43 @@ class WidgetInstance(
             if (runs[i] == MAX_TRIGGER_RUNS + 1) report("${t.kind} ran over $MAX_TRIGGER_RUNS times in a second; does it change what it watches?")
             return
         }
-        t.action.run(root, values)
+        inTrigger = true
+        try {
+            t.action.run(root, values)
+        } finally {
+            inTrigger = false
+        }
+    }
+
+    /** A trigger's statements are running, not a tap's; see [sound]. */
+    private var inTrigger = false
+
+    /** sound(...)s asked for so far: a clip still downloading doesn't play over a later one. */
+    private var sounds = 0
+
+    /**
+     * Plays [src] (a URL, an asset or a guest file), or stops with "stop". A tile plays only when
+     * tapped: a trigger plays only while the app or the widget's screen is showing, so nothing on
+     * the home screen makes a sound on its own.
+     */
+    private fun sound(src: String) {
+        val n = ++sounds
+        if (src == "stop") return services.sound(this, null, null)
+        if (inTrigger && !foreground()) return report("sound(...) in a trigger plays only while the app or screen is open")
+        val scope = scope ?: return
+        scope.launch {
+            val (file, bytes) =
+                withContext(Dispatchers.IO) {
+                    when {
+                        src.startsWith("https://") -> services.remoteFile(src) to null
+                        src.startsWith("asset:") -> null to (program.globals.firstOrNull { it.name == src.removePrefix("asset:") } as? Global.Asset)?.bytes
+                        else -> services.guestFile(src).takeIf { it.isFile } to null
+                    }
+                }
+            if (n != sounds) return@launch
+            if (file == null && bytes == null) return@launch report("sound '$src' couldn't be ${if (src.startsWith("https://")) "downloaded" else "found"}")
+            services.sound(this@WidgetInstance, file, bytes) { report("sound '$src' couldn't play: $it") }
+        }
     }
 
     /** `owl-send <file> set name=value`: sets a state from outside; returns what went wrong, or null. */
@@ -702,6 +874,16 @@ class WidgetInstance(
         write(i, value)
         refresh()
         return null
+    }
+
+    /** Whether an app's Back goes up a level inside it now, because its `back` holds. */
+    fun canGoUp() = program.back?.let { eval(it, root, "back").truthy } == true
+
+    /** Runs an app's onBack while its `back` holds; false when Back should leave the app instead. */
+    fun goUp(): Boolean {
+        if (!canGoUp()) return false
+        program.onBack?.run(root, emptyList())
+        return true
     }
 
     /** `owl-send <file> refresh`. */
@@ -726,6 +908,7 @@ class WidgetInstance(
     fun owns(term: EmbeddedTerminal?) = term != null && term in terminals.values
 
     fun stop() {
+        services.sound(this, null, null)
         jobs.forEach { it.cancel() }
         jobs.clear()
         terminals.values.forEach { it.close() }
@@ -734,10 +917,12 @@ class WidgetInstance(
         if (persisted.isNotEmpty()) save(persisted.map { read(it) })
     }
 
+    /** Runs [g] and writes its value; false when an http fetch failed, so it's tried again soon. */
     private suspend fun update(
         slot: Int,
         g: Global.Source,
-    ) {
+    ): Boolean {
+        var fetched = true
         val value: Value =
             when (g.kind) {
                 "clock" -> Num(Math.floor(System.currentTimeMillis() / 1000.0))
@@ -752,6 +937,7 @@ class WidgetInstance(
                                 services.cmd(target, g.timeout)
                             }
                         val out = if (g.json) Json.parseOrText(r.out) else Str(r.out)
+                        fetched = g.kind != "http" || ok(g, r)
                         if (g.status) {
                             Obj(mapOf("out" to out, "err" to Str(r.err), "code" to Num(r.code.toDouble()), "ok" to bool(ok(g, r))))
                         } else {
@@ -761,7 +947,7 @@ class WidgetInstance(
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
                         report("${g.name}: ${e.message}")
-                        return
+                        return g.kind != "http"
                     }
                 }
                 else ->
@@ -769,11 +955,12 @@ class WidgetInstance(
                         services.android(g.kind.removePrefix("android."))
                     } catch (e: RuntimeException) {
                         report("${g.name}: ${e.message ?: e}")
-                        return
+                        return true
                     }
             }
         write(slot, value)
         sample(g)
+        return fetched
     }
 
     /**
@@ -809,7 +996,8 @@ class WidgetInstance(
     private fun sample(g: Global.Source) {
         updates.intValue++
         // Guest image files are checked again (a stat each) after guest commands, which may have
-        // rewritten them; after a clock tick or Android data, only every few seconds.
+        // rewritten them; after a clock tick or Android data, only every few seconds. A web image
+        // that couldn't be downloaded is asked for again then too.
         val now = android.os.SystemClock.elapsedRealtime()
         if (g.kind == "cmd" || g.kind == "stream" || g.kind == "file" || now - imagesChecked >= IMAGE_RECHECK_MS) {
             imagesChecked = now
@@ -846,14 +1034,32 @@ class WidgetInstance(
         /** How often guest image files are checked for changes when no guest command ran. */
         private const val IMAGE_RECHECK_MS = 5_000L
 
+        /** The least time between two runs of a source whose command or URL is built from state. */
+        private const val MIN_RERUN_MS = 1_000L
+
         /** Runs per trigger per second before it's held back. */
         private const val MAX_TRIGGER_RUNS = 10
 
         /** Distinct sprites kept per widget. */
         private const val MAX_SPRITES = 64
 
-        /** Distinct images kept per widget. */
+        /** Distinct bitmaps kept per widget. */
         private const val MAX_IMAGES = 32
+
+        /** How soon a failed http fetch is tried again, if its interval is longer. */
+        private const val RETRY_MS = 30_000L
+
+        /** How long a post(...) may take: a sign-in or a change, sent once and never retried. */
+        private const val POST_TIMEOUT_S = 30
+
+        /** Distinct SVGs kept per widget; each is drawing commands, a few KB. */
+        private const val MAX_VECTORS = 128
+
+        /** SVG files larger than this aren't drawn. */
+        private const val MAX_SVG_BYTES = 1 shl 20
+
+        /** Guest image files this size or larger aren't read. */
+        private const val MAX_FILE_BYTES = 8 shl 20
 
         /** Images are decoded no larger than needed for a tile this big, in pixels. */
         private const val MAX_IMAGE_SIDE = 1080

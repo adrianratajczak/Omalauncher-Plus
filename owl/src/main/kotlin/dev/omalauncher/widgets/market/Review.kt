@@ -2,14 +2,15 @@ package dev.omalauncher.widgets.market
 
 import dev.omalauncher.widgets.lang.CompileError
 import dev.omalauncher.widgets.lang.Compiler
+import dev.omalauncher.widgets.lang.OwlKind
 import dev.omalauncher.widgets.lang.Program
 import dev.omalauncher.widgets.lang.Source
 import java.security.MessageDigest
 
 /**
- * The marketplace rules for one submitted widget: it compiles, it lives at
- * `widgets/<author>/<name>/widget.owl`, its meta describes it, and anything
- * risky in its commands is pointed out to the reviewer.
+ * The marketplace rules for one submitted widget or app: it compiles, it lives at
+ * `widgets/<author>/<name>/widget.owl` (an app at `apps/<author>/<name>/app.owl`),
+ * its meta describes it, and anything risky in its commands is pointed out to the reviewer.
  */
 class Review(
     /** Path relative to the marketplace repo root. */
@@ -27,6 +28,9 @@ class Review(
     var name = ""
         private set
 
+    /** What the path says it is: under apps/ an app, else a widget. */
+    val kind get() = if (path.startsWith("apps/")) OwlKind.App else OwlKind.Widget
+
     val id get() = "$author/$name"
     val version get() = Catalog.metaText(program?.meta?.get("version")).orEmpty()
     val sha256 get() = sha256(text.toByteArray())
@@ -38,10 +42,10 @@ class Review(
     private fun run() {
         val m = PATH.matchEntire(path)
         if (m == null) {
-            errors += "widgets go at widgets/<author>/<name>/widget.owl in lowercase letters, digits and dashes (got $path)"
+            errors += "widgets go at widgets/<author>/<name>/widget.owl and apps at apps/<author>/<name>/app.owl, in lowercase letters, digits and dashes (got $path)"
         } else {
-            author = m.groupValues[1]
-            name = m.groupValues[2]
+            author = m.groupValues[1].ifEmpty { m.groupValues[3] }
+            name = m.groupValues[2].ifEmpty { m.groupValues[4] }
         }
         val size = text.toByteArray(Charsets.UTF_8).size
         if (size > MAX_BYTES) errors += "the file is ${size / 1024} KB; the limit is ${MAX_BYTES / 1024} KB"
@@ -53,6 +57,7 @@ class Review(
                 return
             }
         program = p
+        if (p.kind != kind) errors += "this is ${if (p.kind == OwlKind.App) "an app" else "a widget"}: it goes at ${p.kind.word}s/<author>/<name>/${p.kind.word}.owl"
         val meta = p.meta
         val description = Catalog.metaText(meta["description"])
         when {
@@ -66,7 +71,7 @@ class Review(
             null -> warnings += "no category: the store lists it under \"other\" (meta { category: \"news\" })"
             !in Catalog.CATEGORIES -> errors += "category should be one of ${Catalog.CATEGORIES.joinToString(", ")} (got \"$category\")"
         }
-        if (p.size == null) warnings += "no size: set size: 3x2 so it's placed at the size you designed it for"
+        if (p.size == null && p.kind == OwlKind.Widget) warnings += "no size: set size: 3x2 so it's placed at the size you designed it for"
         // Shared links warn about these; the store doesn't take them: what they run can change after review.
         val unquoted = p.commands.filter { UNQUOTED.containsMatchIn(it) }
         for (c in unquoted) {
@@ -94,6 +99,7 @@ class Review(
     fun entry(
         preview: String?,
         themePreviews: Map<String, String> = emptyMap(),
+        iconFile: String? = null,
     ): CatalogEntry {
         val p = program!!
         return CatalogEntry(
@@ -112,6 +118,8 @@ class Review(
             owl = p.level,
             category = Catalog.metaText(p.meta["category"]),
             themePreviews = themePreviews,
+            icon = p.icon,
+            iconFile = iconFile,
         )
     }
 
@@ -137,7 +145,7 @@ class Review(
 
     companion object {
         const val MAX_BYTES = 256 * 1024
-        val PATH = Regex("""widgets/([a-z0-9][a-z0-9-]{0,38})/([a-z0-9][a-z0-9-]{0,38})/widget\.owl""")
+        val PATH = Regex("""(?:widgets/([a-z0-9][a-z0-9-]{0,38})/([a-z0-9][a-z0-9-]{0,38})/widget|apps/([a-z0-9][a-z0-9-]{0,38})/([a-z0-9][a-z0-9-]{0,38})/app)\.owl""")
         private val VERSION = Regex("""\d+(\.\d+){0,2}""")
 
         /** What in [commands] matches [RISKS], one line each: "command pipes a download into a shell: curl ... | sh". */
@@ -176,6 +184,9 @@ class Review(
                 Regex("""(^|[;&|(`\n]|\$\()\s*${Compiler.VALUE}""") to "runs a program a widget value names",
                 Regex("""\b(eval|source|$INTERPRETERS)\s+(-\S+\s+)*${Compiler.VALUE}""") to "runs a widget value as code",
                 Regex("""^http GET \(a URL built from widget values\)$""") to "fetches a URL put together while the widget runs, which can send its data anywhere",
+                Regex("""^http POST \(a URL built from widget values\)$""") to "sends to a URL put together while the widget runs, which can send its data anywhere",
+                // An image or sound URL whose host comes from widget values (Compiler's webFile): it can go anywhere too.
+                Regex("""^(image|sound) GET https://[^/\s]*…$""") to "loads a file from a server put together while the widget runs, which can send its data anywhere",
                 Regex("""^($IF_LINUX)?read file \(a path built from widget values\)$""") to "reads a file whose path is put together while the widget runs",
                 Regex("""^read Android notifications""") to "sees every notification on the phone; check nothing sends them anywhere",
             )

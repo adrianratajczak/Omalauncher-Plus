@@ -21,7 +21,8 @@ interface Host {
 
     /**
      * The tile's size: cols and rows in grid cells, tileWidth and tileHeight in dp; null until it's laid out.
-     * Also screenWidth and screenHeight (its screen's size), linux: whether Linux is installed and running,
+     * Also screenWidth and screenHeight (its screen's size), screenInset (how much of its bottom the
+     * navigation bar covers, for an app with `edge`), linux: whether Linux is installed and running,
      * and corners: the launcher's corner style as a radius scale, 0 (edge), 0.5 (soft) or 1 (round).
      */
     fun tile(name: String): Value = Null
@@ -35,6 +36,17 @@ interface Host {
     fun runInto(
         command: String,
         slot: Int,
+    ) {}
+
+    /**
+     * `post(url, body, headers)` in a handler: an HTTP POST, with a map or list [body] sent as JSON. With a
+     * [slot] (`x = post(...)`), the answer goes there as `{code, ok, out}` when it arrives.
+     */
+    fun post(
+        url: String,
+        body: Value,
+        headers: Map<String, String>,
+        slot: Int?,
     ) {}
 
     val budget: Budget
@@ -285,6 +297,11 @@ class Program(
     /** The screen { } block: a full-screen view over the same globals, opened with screen(). */
     val screen: List<WNode>? = null,
     val screenTitle: Ev? = null,
+    /** An app's `back`: while true, the frame shows a back chevron and Back runs [onBack] instead of closing it. */
+    val back: Ev? = null,
+    val onBack: Action? = null,
+    /** An app's `edge`: its view runs on under the navigation bar, which `screenInset` measures. */
+    val edge: Boolean = false,
     val onTap: Action?,
     val triggers: List<Trigger>,
     /** Shell commands this widget can run, known without running it; for reviewing shared widgets. */
@@ -304,4 +321,12 @@ class Program(
     /** Has a Terminal node. */
     val terminal: Boolean = false,
     val nodeCount: Int,
+    /** A tile or an app; for an app [screen] is the whole view and [root] is empty. */
+    val kind: OwlKind = OwlKind.Widget,
+    /** An app's icon for the drawer and home, when `icon:` holds an SVG. */
+    val icon: String? = null,
+    /** An app's icon, when `icon:` names an `asset` (a PNG or other image) instead. */
+    val iconImage: ByteArray? = null,
+    /** What compiles but is likely wrong, one line each with its line:col, for owl-check: a URL value not put through enc(). */
+    val warnings: List<String> = emptyList(),
 )

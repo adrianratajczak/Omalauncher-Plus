@@ -85,6 +85,7 @@ import androidx.compose.runtime.collectAsState
 import dev.omalauncher.Runtime
 import dev.omalauncher.linux.LinuxState
 import dev.omalauncher.linux.LinuxApp
+import dev.omalauncher.widgets.WidgetSpec
 
 /** One app in the bar's results. */
 internal sealed interface AppHit {
@@ -120,6 +121,14 @@ internal sealed interface AppHit {
         override val alias get() = if (app.profile != null) "${app.label} ${if (app.clone) "clone" else "work"}" else null
 
         override fun paused(runtime: Runtime) = runtime.androidApps.paused(app.profile)
+    }
+
+    /** An owl file that's an app: it opens full screen over home. */
+    data class Owl(
+        val spec: WidgetSpec,
+    ) : AppHit {
+        override val key get() = "o:" + spec.file.name
+        override val label get() = spec.name
     }
 
     /** A shortcut an app put on the home screen, such as a website installed from a browser. */
@@ -205,7 +214,8 @@ internal class BarSearch(
 }
 
 private fun allApps(runtime: Runtime): List<AppHit> =
-    runtime.linuxApps.map { AppHit.Linux(it) } + runtime.androidApps.apps.map { AppHit.Android(it) } + runtime.androidApps.shortcuts.map { AppHit.Shortcut(it) }
+    runtime.widgets.apps().map { AppHit.Owl(it) } + runtime.linuxApps.map { AppHit.Linux(it) } + runtime.androidApps.apps.map { AppHit.Android(it) } +
+        runtime.androidApps.shortcuts.map { AppHit.Shortcut(it) }
 
 /** One app by its usage key, for the hidden-recents list; null when not installed. */
 internal fun appHitByKey(
@@ -300,6 +310,8 @@ private fun drawerEntries(
         )
         return out
     }
+    // Owl apps (widgets) first, like upstream.
+    section("apps", runtime.widgets.apps().map { AppHit.Owl(it) })
     // Clones too, as stock drawers list them: second copies of the owner's apps.
     if (linuxState == LinuxState.Installed) {
         section("linux", runtime.linuxApps.map { AppHit.Linux(it) })
@@ -425,7 +437,8 @@ private fun LetterRail(
     }
 }
 
-/** What the app cells do: open, pin to home, the Android app's info and uninstall, and removing a shortcut. */
+/** What the app cells do: open, pin to home, the Android app's info and uninstall, removing a shortcut, and an owl app's edit, share and remove. */
+
 internal class AppHandlers(
     val launch: (AppHit) -> Unit,
     val pin: (AppHit) -> Unit,
@@ -434,15 +447,28 @@ internal class AppHandlers(
     val remove: (AndroidShortcut) -> Unit,
     /** An Android app's shortcuts, for its long-press menu. */
     val shortcuts: (AndroidApp) -> ShortcutMenu,
+    /** Opens the default agent on an owl app's file. */
+    val edit: (WidgetSpec) -> Unit,
+    /** Shares an owl app as a link or QR code, as a widget is shared. */
+    val share: (WidgetSpec) -> Unit,
+    /** Removes an owl app's file, and its icon from home. */
+    val removeOwl: (WidgetSpec) -> Unit,
 )
 
 /** The shortcuts an Android app offers above its menu's actions; null for anything else. */
 private fun AppHit.shortcutMenu(handlers: AppHandlers): ShortcutMenu? = (this as? AppHit.Android)?.let { handlers.shortcuts(it.app) }
 
-/** The long-press menu of an app cell: pin to home, for Android apps their info and uninstall, and for shortcuts removing them. */
+/** The long-press menu of an app cell: pin to home, for owl apps editing, sharing and removing, for Android apps their info and uninstall, and for shortcuts removing them. */
 private fun AppHit.actions(handlers: AppHandlers): List<Pair<String, () -> Unit>> =
     when (this) {
         is AppHit.Linux -> listOf("add to home" to { handlers.pin(this) })
+        is AppHit.Owl ->
+            listOf(
+                "add to home" to { handlers.pin(this) },
+                "edit" to { handlers.edit(spec) },
+                "share" to { handlers.share(spec) },
+                "remove" to { handlers.removeOwl(spec) },
+            )
         is AppHit.Android ->
             listOfNotNull(
                 "add to home" to { handlers.pin(this) },
@@ -460,6 +486,7 @@ private fun AppHit.actions(handlers: AppHandlers): List<Pair<String, () -> Unit>
 private fun AppHit.icons(runtime: Runtime): Pair<ImageBitmap?, ImageBitmap?> =
     when (this) {
         is AppHit.Linux -> runtime.linuxIcons[app.id] to runtime.linuxMasks[app.id]
+        is AppHit.Owl -> runtime.owlIcon(spec, mono = false) to runtime.owlIcon(spec, mono = true)
         is AppHit.Android -> runtime.androidApps.icons[app.key] to runtime.androidApps.masks[app.key]
         is AppHit.Shortcut -> runtime.androidApps.icons[shortcut.key] to runtime.androidApps.masks[shortcut.key]
     }
@@ -751,6 +778,7 @@ internal fun AppPanel(
                                                         Box(Modifier.weight(1f)) { HitCell(runtime, hit, handlers, selected = i == selected) }
                                                     }
                                                     if (!PlusPrefs.drawerAlignRight) repeat(gaps) { Spacer(Modifier.weight(1f)) }
+
                                                 }
                                             }
                                         }

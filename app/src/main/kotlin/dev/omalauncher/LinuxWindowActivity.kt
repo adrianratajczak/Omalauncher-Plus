@@ -135,7 +135,7 @@ class LinuxWindowActivity : InstantActivity() {
  * Recents shows the manifest label ("Linux", or an alias's), but it does use the
  * task icon: the app's drawer icon, else its initials in the theme colors.
  */
-private fun taskIcon(
+internal fun taskIcon(
     name: String,
     background: Int,
     accent: Int,

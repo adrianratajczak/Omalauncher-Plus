@@ -367,6 +367,7 @@ fun HomeScreen(
             },
             onGroup = { app, target -> engine.shortcuts.group(app, target) },
             onReorder = { app, before -> engine.shortcuts.moveBefore(app.key, before) },
+            onRenameFolder = { folder, name -> engine.shortcuts.rename(folder.key, name) },
         )
     }
 

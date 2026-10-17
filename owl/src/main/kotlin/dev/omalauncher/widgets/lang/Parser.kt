@@ -56,14 +56,14 @@ class Parser private constructor(
     }
 
     private fun widget(): WidgetAst {
-        if (!t.isId("widget")) fail("a widget file starts with: widget \"name\" {")
+        val kind = OwlKind.entries.firstOrNull { t.isId(it.word) } ?: fail("an owl file starts with: widget \"name\" { or app \"name\" {")
         next()
         val name = if (t.type == T.Str) literalString(next()) else null
         punct("{")
         val body = body(top = true)
         punct("}")
         expect(T.Eof)
-        return WidgetAst(name, body)
+        return WidgetAst(name, body, kind)
     }
 
     private fun literalString(tok: Token): String =

@@ -125,6 +125,18 @@ More: [README.plus.en.md](README.plus.en.md) (same in
 [Polish](README.plus.pl.md)), page [omalauncher-plus.html](omalauncher-plus.html),
 dev inventory [PLUS.md](PLUS.md).
 
+- **Themes**: all 22 Omarchy themes, with their wallpapers, applied to the
+  launcher and to the Linux apps, plus the community themes from
+  [omarchy.org/themes](https://omarchy.org/themes/), or your own in
+  `~/.config/omarchy/themes`
+- **Widgets** written in OWL, a small declarative language you can edit on the
+  phone, plus a [widget store](https://github.com/SimonSchubert/omarchy-widgets)
+- **Linux, optional**: pacman and the AUR, Linux apps in their own windows,
+  terminal widgets, a file manager, and opt-in GPU acceleration on Mali and Adreno 6xx+ GPUs
+- **Coding agents**: the bar at the bottom sends a prompt to Claude Code, Codex,
+  Copilot, opencode and others, which open in a terminal
+- No account, no ads, no tracking
+
 ## ▶️ Using it
 
 The bar: the one input at the bottom of the home screen opens apps and asks
