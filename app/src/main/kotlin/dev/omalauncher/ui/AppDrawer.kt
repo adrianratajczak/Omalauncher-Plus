@@ -266,7 +266,7 @@ private fun AppHit.actions(handlers: AppHandlers): List<Pair<String, () -> Unit>
     }
 
 /** The app's icon and its silhouette, each null until loaded or if it has none. */
-private fun AppHit.icons(runtime: Runtime): Pair<ImageBitmap?, ImageBitmap?> =
+internal fun AppHit.icons(runtime: Runtime): Pair<ImageBitmap?, ImageBitmap?> =
     when (this) {
         is AppHit.Linux -> runtime.linuxApps.icons[app.id] to runtime.linuxApps.masks[app.id]
         is AppHit.Owl -> runtime.owlIcon(spec, mono = false) to runtime.owlIcon(spec, mono = true)
@@ -382,6 +382,12 @@ private fun StripCell(
         if (menuOpen) AppActions(actions(), shortcuts, onDismiss = { menuOpen = false })
     }
 }
+
+/** [limit] apps the user knows, for the Style menu's previews: the recent ones, topped up from the drawer's. */
+internal fun familiarApps(
+    runtime: Runtime,
+    limit: Int,
+): List<AppHit> = (recentApps(runtime, limit) + allApps(runtime)).distinctBy { it.key }.take(limit)
 
 /** The apps opened lately, last opened first; ones not installed (or not loaded yet) are skipped. */
 private fun recentApps(

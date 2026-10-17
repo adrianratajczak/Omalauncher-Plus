@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -78,6 +83,7 @@ import dev.omalauncher.theme.ThemeDirs
 import dev.omalauncher.theme.ThemeDownload
 import dev.omalauncher.theme.ThemeStore
 import dev.omalauncher.theme.Toml
+import dev.omalauncher.widgets.GRID_COLUMNS
 import java.io.File
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -121,11 +127,13 @@ fun StyleScreen(
             Flag("home apps", "boxed", "icon only", style, Style.APP_TILES)
             Flag("recent apps", "shown", "hidden", style, Style.RECENT_APPS)
             NumberOption("corners", Corners.entries.map { it.label to it.scale.toDouble() }, Style.CORNER_SCALE, style)
+            HomePreview(runtime)
             // Like Hyprland's gaps_in, gaps_out and border_size; the colors are in style.toml.
             Heading("widgets")
             Stepper("gaps in", style, Style.GAPS_IN)
             Stepper("gaps out", style, Style.GAPS_OUT)
             Stepper("border width", style, Style.TILE_BORDER_WIDTH)
+            WidgetPreview()
             Heading("screens")
             Stepper("gaps out", style, Style.SCREEN_GAPS_OUT)
             Stepper("border width", style, Style.SCREEN_BORDER_WIDTH)
@@ -340,9 +348,9 @@ private fun TerminalPreview(
             fontFeatureSettings = "liga 0, calt 0",
         )
     val measurer = rememberTextMeasurer()
+    PreviewLabel()
     BoxWithConstraints(
         Modifier
-            .padding(top = 12.dp)
             .fillMaxWidth()
             .frame(2.dp, Palette.border, Palette.background, radius = 12.dp)
             .padding(with(density) { font.padPx.toDp() }),
@@ -353,6 +361,126 @@ private fun TerminalPreview(
         BasicText(remember(columns, palette) { previewText(columns) }, style = style, softWrap = false)
     }
 }
+
+/**
+ * A sketch of home's bottom: a row of pinned apps, the recent strip and the prompt bar,
+ * drawn with home's own frames, so the options above show as they change.
+ */
+@Composable
+private fun HomePreview(runtime: Runtime) {
+    val apps = familiarApps(runtime, GRID_COLUMNS + 4)
+    val mono = LauncherStyle.monochromeIcons
+    val bare = LauncherStyle.bareAppIcons
+    PreviewScreen {
+        // A row of home's grid: square cells, too small for labels, as most pinned apps are.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(HomeGap)) {
+            for (i in 0 until GRID_COLUMNS) {
+                val app = apps.getOrNull(i)
+                PreviewApp(app?.label ?: "app", app?.icons(runtime)?.let { if (mono) it.second else it.first }, Modifier.weight(1f).aspectRatio(1f))
+            }
+        }
+        if (LauncherStyle.recentApps) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .then(if (bare) Modifier else Modifier.tile())
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                for (app in apps.drop(GRID_COLUMNS)) {
+                    Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                        PreviewIcon(app.label, app.icons(runtime).let { if (mono) it.second else it.first }, 30.dp, strip = true)
+                    }
+                }
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(32.dp).tile())
+    }
+}
+
+/** A pinned app as ShortcutTile draws it, without what makes it one. */
+@Composable
+private fun PreviewApp(
+    label: String,
+    icon: ImageBitmap?,
+    modifier: Modifier,
+) {
+    BoxWithConstraints(modifier.tileFrame(focused = false).padding(4.dp)) {
+        val showLabel = showsLabel()
+        val iconSize = tileIconSize(showLabel)
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+        ) {
+            PreviewIcon(label, icon, iconSize)
+            if (showLabel) TileLabel(label)
+        }
+    }
+}
+
+/** An app's icon as home draws it: a silhouette in the accent color when monochrome, on a badge when bare; [strip] icons fill their cell. */
+@Composable
+private fun PreviewIcon(
+    label: String,
+    icon: ImageBitmap?,
+    size: Dp,
+    strip: Boolean = false,
+) {
+    val mono = LauncherStyle.monochromeIcons
+    when {
+        LauncherStyle.bareAppIcons && (mono || icon == null) ->
+            IconBadge(size) {
+                if (icon != null) {
+                    Image(icon, null, Modifier.size(size * 0.75f), colorFilter = ColorFilter.tint(Palette.accent))
+                } else {
+                    BasicText(initials(label), style = Mono.copy(color = Palette.accent, fontSize = TextSize.Body))
+                }
+            }
+        icon != null -> Image(icon, null, Modifier.size(size * if (mono && strip) 0.85f else 1f), colorFilter = if (mono) ColorFilter.tint(Palette.accent) else null)
+        else -> BasicText(initials(label), style = Mono.copy(color = Palette.accent, fontSize = TextSize.Large))
+    }
+}
+
+/**
+ * Widgets on home as empty tiles: a wide one over two small ones, the last in use and so
+ * outlined as focused, with the gaps between them and to the screen's edges.
+ */
+@Composable
+private fun WidgetPreview() {
+    PreviewScreen {
+        Box(Modifier.fillMaxWidth().height(40.dp).tile())
+        Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(HomeGap)) {
+            Box(Modifier.weight(1f).fillMaxHeight().tile())
+            Box(Modifier.weight(1f).fillMaxHeight().tile(focused = true))
+        }
+    }
+}
+
+/**
+ * A patch of home for the previews, in the controls' column so it reads as a sketch rather than one of them:
+ * home's gaps out to its edges, and [content] stacked home's gaps in apart.
+ */
+@Composable
+private fun PreviewScreen(content: @Composable ColumnScope.() -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+        OptionLabel("preview")
+        Column(
+            Modifier
+                .weight(1f)
+                .clip(LauncherStyle.shape(12.dp))
+                .background(Palette.surface)
+                .padding(EdgeGap),
+            verticalArrangement = Arrangement.spacedBy(HomeGap),
+            content = content,
+        )
+    }
+}
+
+/** Over a preview, so it isn't mistaken for controls. */
+@Composable
+private fun PreviewLabel() = BasicText("preview", Modifier.padding(top = 12.dp, bottom = 4.dp), style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
 
 /** A stretch of [PREVIEW] in theme colors (foreground and none without them), maybe bold or italic. */
 private class Run(
