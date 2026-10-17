@@ -746,7 +746,7 @@ internal fun AppPanel(
                                 if (letter == null || shown == null) baseEntries else filterRail(baseEntries, letter, columns)
                             }
                         val railLetters = remember(baseEntries, shown) { drawerRail(baseEntries, shown != null) }
-                        Box(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                             // Search results bottom-up, so the best match sits right above the bar; the full list reads
                             // top-down from its start, like stock drawers, so a drag down there closes the panel right away.
                             // Search results and a picked rail letter pin to the bottom, by the thumb and the bar.
