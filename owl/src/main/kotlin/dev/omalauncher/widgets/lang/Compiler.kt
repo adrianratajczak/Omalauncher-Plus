@@ -790,7 +790,8 @@ class Compiler private constructor(
         return when (s) {
             is Stmt.Assign -> {
                 val slot = slots[s.name]
-                if (lookup(s.name, scope) is Ref.Local) fail("'${s.name}' is a let or a value given to the handler, not a state, so it can't be assigned", s.pos)
+                // A state wins, even with a local of its name in reach (onChange: value = value): widgets did that before owl 9.
+                if (s.name !in states && lookup(s.name, scope) is Ref.Local) fail("'${s.name}' is a let or a value given to the handler, not a state, so it can't be assigned", s.pos)
                 if (slot == null || s.name !in states) {
                     fail(if (slot == null) "unknown state '${s.name}'; declare it with: state ${s.name} = ..." else "'${s.name}' isn't a state and can't be assigned", s.pos)
                 }

@@ -1186,4 +1186,18 @@ class LangTest {
         assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { let k = 1; k = 2 }\n Text { text: a } }").contains("'k' is a let or a value given to the handler"))
         assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: if a a = 1\n Text { text: a } }").contains("expected '{'"))
     }
+
+    /** Older widgets assign a state that shares its name with a handler value, a loop variable or a parameter. */
+    @Test fun assigningAStateNamedLikeALocalStillWorks() {
+        val p =
+            Compiler.compile(
+                "widget {\n meta { owl: 4 }\n state value = 50\n state x = 0\n" +
+                    " component Pick(x) { Text { text: x; onTap: x = 1 } }\n" +
+                    " Column {\n Slider { value: value; onChange: value = value }\n for x in [1, 2] { Text { text: x; onTap: x = 5 } }\n Pick { x: 3 } } }",
+            )
+        val host = TestHost(p)
+        val slider = (p.root.single() as WNode.Element).children.first() as WNode.Element
+        slider.handlers["onChange"]!!.run(Env.root(host), listOf(Num(70.0)))
+        assertEquals(Num(70.0), host.slots[0])
+    }
 }
