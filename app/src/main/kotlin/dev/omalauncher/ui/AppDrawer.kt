@@ -224,7 +224,7 @@ internal fun appHitByKey(
 ): AppHit? = allApps(runtime).firstOrNull { it.key == key }
 
 /** The recent strip shows when the theme allows it and Plus hasn't hidden it. */
-internal fun showRecents(): Boolean = LauncherStyle.recentApps && PlusPrefs.showRecents
+internal fun showRecents(): Boolean = LauncherStyle.recentApps
 
 internal fun searchApps(
     runtime: Runtime,
@@ -633,6 +633,7 @@ internal fun AppPanel(
     LaunchedEffect(Unit) { runtime.refreshApps() }
     val linuxState by runtime.bootstrap.state.collectAsState()
     val query = state.query
+    val calcResult = remember(query) { evalMath(query) }
     val apps = runtime.androidApps
     // With a work profile, the empty bar lists one profile's apps at a time, as stock drawers' tabs do.
     val (tabs, tab) = shownTabs(runtime, state)
@@ -832,6 +833,15 @@ internal fun AppPanel(
                     Column(Modifier.padding(bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         ActionRow("search store", highlighted == -1, onClick = { onStore(query) })
                         ActionRow("search web", highlighted == -2, onClick = { onWeb(query) })
+                    }
+                }
+                if (calcResult != null) {
+                    Box(Modifier.fillMaxSize()) {
+                        BasicText(
+                            calcResult,
+                            Modifier.align(Alignment.Center),
+                            style = Mono.copy(fontSize = 24.sp, color = Palette.accent),
+                        )
                     }
                 }
             }
@@ -1038,5 +1048,63 @@ private fun AppActions(
         MenuItems(actions, onDismiss, minWidth = 160.dp, itemPadding = 12.dp, fontSize = TextSize.Item) {
             if (menu != null) ShortcutRows(offered, menu, onDismiss, TextSize.Item)
         }
+    }
+}
+/** A tiny safe arithmetic evaluator: + - * / and parentheses. Returns null for non-math input. */
+internal fun evalMath(expr: String): String? {
+    val normalized = expr.trim().replace(',', '.').replace(" ", "")
+    if (normalized.isEmpty()) return null
+    if (!normalized.all { it.isDigit() || it in "+-*/()." }) return null
+    if (!normalized.any { it in "+-*/" }) return null
+    return try {
+        val parser = MathParser(normalized)
+        val value = parser.parse()
+        if (!parser.fullyConsumed()) return null
+        if (value.isNaN() || value.isInfinite()) return null
+        val long = value.toLong()
+        if (value == long.toDouble()) long.toString() else value.toString()
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private class MathParser(private val s: String) {
+    var pos = 0
+    fun parse(): Double = parseExpr()
+    fun fullyConsumed(): Boolean = pos == s.length
+    private fun parseExpr(): Double {
+        var v = parseTerm()
+        while (pos < s.length && (s[pos] == '+' || s[pos] == '-')) {
+            val op = s[pos++]
+            val t = parseTerm()
+            v = if (op == '+') v + t else v - t
+        }
+        return v
+    }
+    private fun parseTerm(): Double {
+        var v = parseFactor()
+        while (pos < s.length && (s[pos] == '*' || s[pos] == '/')) {
+            val op = s[pos++]
+            val f = parseFactor()
+            v = if (op == '*') v * f else v / f
+        }
+        return v
+    }
+    private fun parseFactor(): Double {
+        if (pos < s.length && s[pos] == '(') {
+            pos++
+            val v = parseExpr()
+            if (pos < s.length && s[pos] == ')') pos++
+            return v
+        }
+        if (pos < s.length && (s[pos] == '-' || s[pos] == '+')) {
+            val sign = s[pos++]
+            val v = parseFactor()
+            return if (sign == '-') -v else v
+        }
+        val start = pos
+        while (pos < s.length && (s[pos].isDigit() || s[pos] == '.')) pos++
+        if (start == pos) throw IllegalArgumentException("number expected")
+        return s.substring(start, pos).toDouble()
     }
 }

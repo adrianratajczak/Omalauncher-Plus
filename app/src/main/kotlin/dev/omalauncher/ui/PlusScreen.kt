@@ -234,14 +234,6 @@ fun PlusScreen(
             item(key = "home-label") {
                 SectionLabel("home", Modifier.padding(start = 8.dp, top = 6.dp))
             }
-            item(key = "show-recents") {
-                PlusSwitch(
-                    title = "recent apps",
-                    subtitle = "the strip above the bar · off hides it everywhere",
-                    on = PlusPrefs.showRecents,
-                    onToggle = { PlusPrefs.setShowRecents(context, !PlusPrefs.showRecents) },
-                )
-            }
             item(key = "labels-label") {
                 SectionLabel("labels", Modifier.padding(start = 8.dp, top = 6.dp))
             }

@@ -59,10 +59,6 @@ object PlusPrefs {
     var drawerAlignRight by mutableStateOf(false)
         private set
 
-    /** Shows the recent apps strip on home; off hides it everywhere. */
-    var showRecents by mutableStateOf(true)
-        private set
-
     /** App keys hidden from the recent strip by long-press; shown again from Plus. */
     var recentHidden: Set<String> by mutableStateOf(emptySet())
         private set
@@ -109,7 +105,6 @@ object PlusPrefs {
             }
         widgetBlur = prefs.getBoolean(WIDGET_BLUR, false)
         drawerAlignRight = prefs.getBoolean(DRAWER_ALIGN_RIGHT, false)
-        showRecents = prefs.getBoolean(SHOW_RECENTS, true)
         recentHidden = prefs.getStringSet(RECENT_HIDDEN, emptySet()).orEmpty().toSet()
         dayNightAuto = prefs.getBoolean(DAY_NIGHT_AUTO, false)
         dayTheme = prefs.getString(DAY_THEME, null)
@@ -244,15 +239,6 @@ object PlusPrefs {
         context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(DRAWER_ALIGN_RIGHT, right).apply()
     }
 
-    /** Shows or hides the recent apps strip and saves it; home redraws itself. */
-    fun setShowRecents(
-        context: Context,
-        show: Boolean,
-    ) {
-        showRecents = show
-        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(SHOW_RECENTS, show).apply()
-    }
-
     /** Hides an app from the recent strip (or shows it again) and saves it. */
     fun setRecentHidden(
         context: Context,
@@ -330,7 +316,6 @@ object PlusPrefs {
     private const val ADAPTIVE_BACKGROUND = "plus_adaptive_background"
     private const val WIDGET_BLUR = "plus_widget_blur"
     private const val DRAWER_ALIGN_RIGHT = "plus_drawer_align_right"
-    private const val SHOW_RECENTS = "plus_show_recents"
     private const val RECENT_HIDDEN = "plus_recent_hidden"
     private const val DAY_NIGHT_AUTO = "plus_day_night_auto"
     private const val DAY_THEME = "plus_day_theme"
