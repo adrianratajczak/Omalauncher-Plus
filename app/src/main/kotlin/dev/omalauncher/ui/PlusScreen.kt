@@ -245,14 +245,6 @@ fun PlusScreen(
                     onToggle = { PlusPrefs.setHideHomeLabels(context, !PlusPrefs.hideHomeLabels) },
                 )
             }
-            item(key = "gridless") {
-                PlusSwitch(
-                    title = "gridless",
-                    subtitle = "free placement, no snapping, widgets can overlap",
-                    on = PlusPrefs.gridless,
-                    onToggle = { PlusPrefs.setGridless(context, !PlusPrefs.gridless) },
-                )
-            }
             item(key = "hide-drawer-labels") {
                 PlusSwitch(
                     title = "hide drawer labels",

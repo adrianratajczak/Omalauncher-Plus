@@ -501,8 +501,7 @@ internal fun HomeGrid(
                                 } else {
                                     val x = g.colLine(at - hold).coerceIn(0, (g.cols - cell.w).coerceAtLeast(0))
                                     val y = g.rowLine(at - hold).coerceIn(0, (g.rows - cell.h).coerceAtLeast(0))
-                                    val c = Cell(x, y, cell.w, cell.h)
-                                    if (PlusPrefs.gridless) c else c.takeIf { n -> others.none { it.second.overlaps(n) } }
+                                    Cell(x, y, cell.w, cell.h).takeIf { n -> others.none { it.second.overlaps(n) } }
                                 }
                         }
                         val page = arrange.page

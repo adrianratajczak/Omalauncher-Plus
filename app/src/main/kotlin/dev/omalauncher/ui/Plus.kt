@@ -23,10 +23,6 @@ object PlusPrefs {
     var hideHomeLabels by mutableStateOf(false)
         private set
 
-    /** Free placement: no grid snapping, widgets can overlap. */
-    var gridless by mutableStateOf(false)
-        private set
-
     /** Hides app names under drawer icons. */
     var hideDrawerLabels by mutableStateOf(false)
         private set
@@ -108,7 +104,6 @@ object PlusPrefs {
                 else -> TintSource.Custom
             }
         widgetBlur = prefs.getBoolean(WIDGET_BLUR, false)
-        gridless = prefs.getBoolean(GRIDLESS, false)
         drawerAlignRight = prefs.getBoolean(DRAWER_ALIGN_RIGHT, false)
         recentHidden = prefs.getStringSet(RECENT_HIDDEN, emptySet()).orEmpty().toSet()
         dayNightAuto = prefs.getBoolean(DAY_NIGHT_AUTO, false)
@@ -146,15 +141,6 @@ object PlusPrefs {
     ) {
         hideHomeLabels = hide
         context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(HOME_LABELS, hide).apply()
-    }
-
-    /** Free placement: no grid snapping, widgets can overlap. */
-    fun setGridless(
-        context: Context,
-        on: Boolean,
-    ) {
-        gridless = on
-        context.getSharedPreferences("launcher", Context.MODE_PRIVATE).edit().putBoolean(GRIDLESS, on).apply()
     }
 
     /** Hides app names under drawer icons and saves it. */
@@ -329,7 +315,6 @@ object PlusPrefs {
     private const val TINT_THEME = "plus_tint_theme"
     private const val ADAPTIVE_BACKGROUND = "plus_adaptive_background"
     private const val WIDGET_BLUR = "plus_widget_blur"
-    private const val GRIDLESS = "plus_gridless"
     private const val DRAWER_ALIGN_RIGHT = "plus_drawer_align_right"
     private const val RECENT_HIDDEN = "plus_recent_hidden"
     private const val DAY_NIGHT_AUTO = "plus_day_night_auto"
