@@ -426,8 +426,6 @@ internal fun HomeGrid(
                         var aim = -1
                         var aimSince = 0L
                         var outSince = 0L
-    var swapAim = ""
-    var swapSince = 0L
                         while (true) {
                             val waiting = atEdgeSince > 0 || aimSince > 0 || outSince > 0
                             val event = withTimeoutOrNull(if (waiting) 50L else Long.MAX_VALUE) { awaitPointerEvent(PointerEventPass.Initial) }
@@ -505,27 +503,6 @@ internal fun HomeGrid(
                                     val y = g.rowLine(at - hold).coerceIn(0, (g.rows - cell.h).coerceAtLeast(0))
                                     Cell(x, y, cell.w, cell.h).takeIf { n -> others.none { it.second.overlaps(n) } }
                                 }
-                            // Live push: once the finger rests over another tile, swap places so the rest make way.
-                            if (target != null && !inFolder && moved) {
-                                if (target.first.key != swapAim) {
-                                    swapAim = target.first.key
-                                    swapSince = now
-                                } else if (swapSince > 0L && now - swapSince > REORDER_MS) {
-                                    layout.cell(target.first.key)?.let { other ->
-                                        layout.set(target.first.key, cell)
-                                        layout.set(item.key, other)
-                                        if (page != from) {
-                                            onMove(target.first, from)
-                                            onMove(item, page)
-                                        }
-                                    }
-                                    swapSince = 0L
-                                    swapAim = ""
-                                }
-                            } else {
-                                swapAim = ""
-                                swapSince = 0L
-                            }
                         }
                         val page = arrange.page
                         val target = arrange.swapWith?.let { key -> itemsOn(page).firstOrNull { it.key == key } }
