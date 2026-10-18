@@ -26,17 +26,17 @@ import dev.omalauncher.linux.EDIT_COMMAND
 import dev.omalauncher.linux.FILES_COMMAND
 import dev.omalauncher.linux.Gpu
 import dev.omalauncher.linux.LinuxApp
+import dev.omalauncher.linux.loadLinuxApps
+import dev.omalauncher.linux.resolveLinuxIcon
 import dev.omalauncher.linux.OpenBridge
 import dev.omalauncher.linux.Pacman
 import dev.omalauncher.linux.Proot
-import dev.omalauncher.linux.LinuxState
 import dev.omalauncher.linux.SystemUpdates
+import dev.omalauncher.linux.LauncherFont
 import dev.omalauncher.linux.TerminalFont
 import dev.omalauncher.linux.bundledIcons
 import dev.omalauncher.linux.defaultApps
-import dev.omalauncher.linux.loadLinuxApps
 import dev.omalauncher.linux.matches
-import dev.omalauncher.linux.resolveLinuxIcon
 import dev.omalauncher.linux.run
 import dev.omalauncher.linux.shellQuote
 import dev.omalauncher.theme.Style
@@ -54,8 +54,8 @@ import dev.omalauncher.ui.SettingsPage
 import dev.omalauncher.ui.TerminalTiles
 import dev.omalauncher.ui.WindowManager
 import dev.omalauncher.ui.bitmapMask
-import dev.omalauncher.ui.Palette
 import dev.omalauncher.ui.decodeIcon
+import dev.omalauncher.ui.Palette
 import dev.omalauncher.ui.decodeImageIcon
 import dev.omalauncher.ui.decodeSvgIcon
 import dev.omalauncher.upgrade.Provisioner
@@ -92,6 +92,7 @@ class Runtime(
     val terminals = TerminalTiles(this)
     val style = StyleStore(context)
     val terminalFont = TerminalFont(proot, style)
+    val launcherFont = LauncherFont(proot, style).also { it.restore() }
     val gestures = Gestures(context)
     /** The icon packs on the phone and the chosen one, which replaces the apps' own icons. */
     val iconPacks = IconPackStore(context)
@@ -106,6 +107,7 @@ class Runtime(
     /** The Icon= each of [linuxIcons] was loaded from, to notice an entry changing it. */
     private val linuxIconNames = HashMap<String, String>()
     val androidApps = AndroidAppCatalog(context, iconPacks)
+
     val usage = AppUsage(context)
     val themes = ThemeStore(context, proot, style, isLinux = { linux }, onConfigChanged = ::syncGuest)
     private val audio = AudioBridge(proot)
@@ -114,7 +116,7 @@ class Runtime(
     val pacman = Pacman(context, proot)
     val widgets = WidgetEngine(context, proot, this)
     val updates = SystemUpdates(proot, pacman, agents)
-    val gpu = Gpu(context, proot)
+    val gpu = Gpu(context, proot, pacman)
 
     /** The launcher's own provided files (default widgets, their docs); see [Provisioner]. */
     private val launcherFiles = Provisioner(proot.filesDir, LauncherData.LAUNCHER_MANIFEST, listOf(widgets::managed, style::managed))
@@ -142,7 +144,7 @@ class Runtime(
     private var started = false
     private var prepared = false
 
-    private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    private val prefs = LauncherData.prefs(context)
 
     /**
      * The first-run screen is done: from then on the home screen shows, with
@@ -171,6 +173,9 @@ class Runtime(
         // foot.ini follows the terminal settings, from the Style menu or the file alike.
         scope.launch {
             snapshotFlow { style.style[Style.TERMINAL_FONT] to style.style[Style.TERMINAL_TEXT] }.drop(1).collect { terminalFont.write() }
+        }
+        scope.launch {
+            snapshotFlow { style.style[Style.FONT] }.drop(1).collect { launcherFont.apply() }
         }
         androidApps.start()
         startDayNight()
@@ -211,7 +216,6 @@ class Runtime(
         started = true
         scope.launch {
             withContext(Dispatchers.IO) {
-                LauncherData.migrate(context)
                 launcherFiles.sync()
                 agents.load()
                 iconPacks.refresh()
@@ -275,6 +279,7 @@ class Runtime(
         linuxJob =
             scope.launch {
                 linux = false
+                launcherFont.forget()
                 widgets.linuxChanged(false)
                 audio.stop()
                 withContext(Dispatchers.IO) { proot.killAll() }
@@ -285,9 +290,6 @@ class Runtime(
                 }
                 gpu.turnOff()
                 linuxApps.clear()
-                linuxIcons.clear()
-                linuxMasks.clear()
-                linuxIconNames.clear()
                 setService(false)
             }
     }
@@ -351,6 +353,8 @@ class Runtime(
             terminalFont.write()
         }
         linux = true
+        // A font picked from Linux that wasn't remembered at start (or was installed since) loads now.
+        scope.launch { launcherFont.apply() }
         // The recent apps strip on home lists Linux apps before the app list is ever opened.
         scope.launch { refreshApps() }
         // Themes picked without Linux are written into the guest now.
@@ -508,6 +512,7 @@ class Runtime(
             linuxMasks[app.id] = mask
             linuxIconNames[app.id] = app.icon!!
         }
+
     }
 
     /** A pinned app's icon as the drawer shows it, or its silhouette; null until loaded, or if it has none. */

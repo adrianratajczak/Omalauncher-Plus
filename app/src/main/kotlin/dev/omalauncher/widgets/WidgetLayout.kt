@@ -1,7 +1,10 @@
 package dev.omalauncher.widgets
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.setValue
 import dev.omalauncher.upgrade.Versioned
 import dev.omalauncher.upgrade.mapEntries
 import org.json.JSONObject
@@ -17,10 +20,25 @@ data class Cell(
     val bottom get() = y + h
 
     fun overlaps(o: Cell) = x < o.right && o.x < right && y < o.bottom && o.y < bottom
+
+    /**
+     * This cell, placed on a grid of [from] columns, moved onto one of [to]: its left edge and width scale down
+     * to whole cells, and it stays at least [minWidth] wide, or the whole width, by moving left.
+     */
+    fun rescaled(
+        from: Int,
+        to: Int,
+        minWidth: Int = 1,
+    ): Cell {
+        if (from == to) return this
+        val x = x * to / from
+        val w = maxOf((w * to / from).coerceIn(1, to - x), minWidth.coerceAtMost(to))
+        return copy(x = x.coerceAtMost(to - w), w = w)
+    }
 }
 
-/** Columns of the home grid. Saved with the layout, so changing it rescales saved cells rather than scrambling them. */
-const val GRID_COLUMNS = 6
+/** The home grid's columns before they could be set: a saved layout that doesn't say has this many. */
+const val CLASSIC_COLUMNS = 6
 
 /**
  * Where each widget and pinned app sits on the home grid, keyed by file name
@@ -35,41 +53,47 @@ class WidgetLayout(
     /** Read while compiling widgets, off the main thread. */
     private val pages = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
+    /** Columns of the home grid the cells are on; saved with them, so [regrid] can move them onto another. */
+    var columns by mutableIntStateOf(CLASSIC_COLUMNS)
+        private set
+
     init {
-        (Versioned.read(prefs.getString(LAYOUT, null), VERSION) as? JSONObject)?.let(::load)
-        migrateLegacy(context)
+        (Versioned.read(prefs.getString(LAYOUT, null), VERSION) as? JSONObject)?.let { data ->
+            columns = columnsOf(data)
+            load(data)
+        }
     }
 
+    private fun columnsOf(data: JSONObject) = data.optInt("columns", CLASSIC_COLUMNS).takeIf { it > 0 } ?: CLASSIC_COLUMNS
+
     private fun load(data: JSONObject) {
-        val columns = data.optInt("columns", GRID_COLUMNS)
-        data.optJSONObject("cells")?.mapEntries { _, c -> rescale(Cell(c.getInt("x"), c.getInt("y"), c.getInt("w"), c.getInt("h")), columns) }?.let(cells::putAll)
+        val saved = columnsOf(data)
+        data.optJSONObject("cells")?.mapEntries { _, c -> Cell(c.getInt("x"), c.getInt("y"), c.getInt("w"), c.getInt("h")).rescaled(saved, columns) }?.let(cells::putAll)
         data.optJSONObject("pages")?.let { p -> for (k in p.keys()) pages[k] = p.optInt(k, 1) }
     }
 
     /**
-     * Launchers before versioning kept the cells under "cells" (6 columns) and
-     * page overrides in their own preferences. Those are the user's arrangement:
-     * they win over anything placed since, and are removed once carried over.
+     * Moves every cell onto a grid of [to] columns (see [Cell.rescaled]); a widget stays as wide as its
+     * [HomeItem.minSize] allows. A tile that lands on one before it on its page in [tiles] (each page's, in the
+     * order they keep their spots) loses its cell, so its page places it afresh in its first free spot, or moves
+     * it to a page with room.
      */
-    private fun migrateLegacy(context: Context) {
-        val old = prefs.getString(LEGACY_CELLS, null)
-        val oldPages = context.getSharedPreferences(LEGACY_PAGES, Context.MODE_PRIVATE)
-        if (old == null && oldPages.all.isEmpty()) return
-        old?.let { runCatching { load(JSONObject().put("columns", 6).put("cells", JSONObject(it))) } }
-        for ((k, v) in oldPages.all) (v as? Int)?.let { pages[k] = it }
+    fun regrid(
+        to: Int,
+        tiles: List<List<HomeItem>>,
+    ) {
+        if (to == columns) return
+        val minWidth = tiles.flatten().associate { it.key to it.minSize.first }
+        for ((key, c) in cells.toMap()) cells[key] = c.rescaled(columns, to, minWidth[key] ?: 1)
+        columns = to
+        for (items in tiles) {
+            val kept = ArrayList<Cell>()
+            for (item in items) {
+                val c = cells[item.key]?.let { if (item.resizable) it else it.copy(w = 1, h = 1) } ?: continue
+                if (kept.any { it.overlaps(c) }) cells.remove(item.key) else kept += c
+            }
+        }
         save()
-        prefs.edit().remove(LEGACY_CELLS).apply()
-        oldPages.edit().clear().apply()
-    }
-
-    /** A cell saved on a grid of [columns], moved onto today's. */
-    private fun rescale(
-        c: Cell,
-        columns: Int,
-    ): Cell {
-        if (columns == GRID_COLUMNS || columns <= 0) return c
-        val x = c.x * GRID_COLUMNS / columns
-        return c.copy(x = x, w = (c.w * GRID_COLUMNS / columns).coerceIn(1, GRID_COLUMNS - x))
     }
 
     /** The page [name] was moved to on the phone, if it was. */
@@ -197,7 +221,7 @@ class WidgetLayout(
         val (cellW, cellH, gap) =
             geometry ?: run {
                 val gap = Math.round(6 * metrics.density)
-                val cell = (metrics.widthPixels - gap) / GRID_COLUMNS.toFloat()
+                val cell = (metrics.widthPixels - gap) / columns.toFloat()
                 Triple(cell, cell, gap)
             }
         val (across, down) = if (turned) cells.second to cells.first else cells
@@ -209,7 +233,7 @@ class WidgetLayout(
         for ((name, c) in cells) json.put(name, JSONObject().put("x", c.x).put("y", c.y).put("w", c.w).put("h", c.h))
         val data =
             JSONObject()
-                .put("columns", GRID_COLUMNS)
+                .put("columns", columns)
                 .put("cells", json)
                 .put("pages", JSONObject(pages as Map<*, *>))
         prefs.edit().putString(LAYOUT, Versioned.write(VERSION, data)).apply()
@@ -218,8 +242,6 @@ class WidgetLayout(
     private companion object {
         const val LAYOUT = "layout"
         const val VERSION = 1
-        const val LEGACY_CELLS = "cells"
         const val PORTRAIT_ROWS = "portrait_rows_"
-        const val LEGACY_PAGES = "widget_pages"
     }
 }

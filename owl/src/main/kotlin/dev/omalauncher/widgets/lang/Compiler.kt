@@ -24,7 +24,7 @@ class Compiler private constructor(
          * instead of failing on what they don't know. Bump it with every
          * addition a widget could depend on: nodes, properties, builtins.
          */
-        const val LEVEL = 8
+        const val LEVEL = 9
         private const val MAX_ASSET_BYTES = 2 shl 20
 
         /** An app icon is a shape or two drawn in SVG, not a picture. */
@@ -38,120 +38,6 @@ class Compiler private constructor(
                 throw CompileError("too deeply nested", 0)
             }
 
-        /** Nodes: their own properties, and what they may contain. */
-        val KINDS: Map<String, Kind> =
-            mapOf(
-                "Column" to Kind(setOf("gap", "align", "justify", "scroll"), Children.UI),
-                "Row" to Kind(setOf("gap", "align", "justify", "wrap"), Children.UI),
-                "Flow" to Kind(setOf("gap", "align", "justify"), Children.UI),
-                "Box" to Kind(setOf("align"), Children.UI),
-                "Grid" to Kind(setOf("columns", "gap"), Children.UI),
-                "Text" to Kind(setOf("text", "style", "color", "fontSize", "bold", "italic", "font", "align", "maxLines"), Children.NONE),
-                "Image" to Kind(setOf("src", "fit", "tint"), Children.NONE),
-                "Button" to Kind(setOf("text", "color"), Children.NONE),
-                "Progress" to Kind(setOf("value", "max", "color", "track"), Children.NONE),
-                "Ring" to Kind(setOf("value", "max", "color", "track", "thickness", "start", "sweep"), Children.NONE),
-                "Sparkline" to Kind(setOf("values", "min", "max", "color", "area", "thickness"), Children.NONE),
-                "Canvas" to Kind(emptySet(), Children.DRAW),
-                "Shader" to Kind(setOf("code", "uniforms", "fallback"), Children.NONE),
-                "Spacer" to Kind(emptySet(), Children.NONE),
-                // owl 2: a live terminal (foot) inside the tile.
-                "Terminal" to Kind(setOf("command", "fontSize"), Children.NONE),
-                // owl 4: input.
-                "Slider" to Kind(setOf("value", "min", "max", "step", "color", "track", "live"), Children.NONE),
-                "Input" to Kind(setOf("text", "placeholder", "color", "fontSize", "clear", "focus"), Children.NONE),
-            )
-
-        val COMMON =
-            setOf(
-                "width", "height", "size", "fill", "weight", "padding", "background", "border", "borderColor",
-                "radius", "opacity", "rotation", "scale", "offset", "clip", "visible",
-            )
-
-        val ANIMATABLE = setOf("opacity", "rotation", "scale", "value", "color", "background")
-
-        private val ALIGN = setOf("start", "center", "end", "top", "bottom", "topStart", "topEnd", "bottomStart", "bottomEnd")
-        private val ENUMS =
-            mapOf(
-                "style" to setOf("huge", "title", "body", "small", "muted", "label"),
-                "align" to ALIGN,
-                "justify" to setOf("start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"),
-                "fit" to setOf("contain", "cover", "fill"),
-                "font" to setOf("mono", "sans", "serif", "icon"),
-                "fill" to setOf("width", "height"),
-                "cap" to setOf("round", "butt", "square"),
-            )
-
-        /** Canvas calls: positional arity, and whether they take a { } body of further calls. */
-        val DRAW: Map<String, DrawOp> =
-            mapOf(
-                "rect" to DrawOp(4..4),
-                "circle" to DrawOp(3..3),
-                "arc" to DrawOp(5..5),
-                "line" to DrawOp(4..4),
-                "path" to DrawOp(1..1),
-                "text" to DrawOp(3..3),
-                "image" to DrawOp(5..5),
-                "translate" to DrawOp(2..2, group = true),
-                "rotate" to DrawOp(1..3, group = true),
-                "scale" to DrawOp(1..4, group = true),
-                "clip" to DrawOp(4..4, group = true),
-                "layer" to DrawOp(1..1, group = true),
-                // owl 3: pixel art from rows of letters, one color per letter.
-                "sprite" to DrawOp(4..4),
-            )
-        private val DRAW_NAMED = setOf("fill", "stroke", "width", "cap", "radius", "closed", "size", "color", "align", "bold", "palette")
-
-        /** What needs a newer language than 1, with the version: using one without `meta { owl: N }` is an error. */
-        private val SINCE =
-            mapOf("Terminal" to 2, "sprite" to 3) +
-                listOf("Slider", "Input", "file", "android.notifications", "android.volume", "volume", "notification", "every", "at", "when", "on").associateWith { 4 } +
-                // owl 5: a full-screen view of the widget.
-                listOf("screen", "close", "screenWidth", "screenHeight", "optional", "linux", "android.system").associateWith { 5 } +
-                // owl 6: properties, named Node.property; values in commands, quoted; the launcher's corner style.
-                listOf("Input.focus", "sh", "corners").associateWith { 6 } +
-                // owl 7: more of the phone, without new permissions.
-                listOf("android.alarm", "android.modes", "torch", "share", "haptic").associateWith { 7 } +
-                // owl 8: apps, files that aren't tiles; the phone's apps as a list; images and sounds from the web; values in URLs.
-                listOf("app \"…\" { }", "android.apps", WEB_IMAGE, "sound", "enc", "post", "screenInset").associateWith { 8 }
-
-        private const val WEB_IMAGE = "an image from the web"
-
-        // No onLongPress: long-press belongs to the home screen, which lifts the tile to move it.
-        /**
-         * Package managers a widget can declare in `requires`, with what a
-         * package name may look like. Names end up in a shell command, so the
-         * pattern is strict.
-         */
-        val MANAGERS = mapOf("pacman" to Regex("[a-z0-9@_+][a-z0-9@._+-]*"))
-
-        private val HANDLER_PARAMS =
-            mapOf("onTap" to listOf("x", "y"), "onDrag" to listOf("dx", "dy", "x", "y"), "onChange" to listOf("value"), "onSubmit" to listOf("value"))
-
-        /** Handlers only some nodes have. */
-        private val HANDLER_KINDS = mapOf("onChange" to setOf("Slider", "Input"), "onSubmit" to setOf("Input"))
-
-        /** What triggers bind in their statements. */
-        private val TRIGGER_PARAMS = mapOf("on" to listOf("value", "old"))
-
-        /** Data only Android has; battery, media, notifications, volume, alarm and modes update as they change, device is fixed, system and apps are polled. */
-        val ANDROID = setOf("battery", "device", "media", "notifications", "volume", "system", "alarm", "modes", "apps")
-
-        /** media("...") commands. */
-        val MEDIA = setOf("toggle", "play", "pause", "next", "previous", "open")
-
-        /** volume("...") commands; a number sets the level in percent instead. */
-        val VOLUME = setOf("up", "down", "mute", "unmute", "toggle")
-
-        /** torch("...") commands; true and false also turn it on and off. */
-        val TORCH = setOf("on", "off", "toggle")
-
-        /** notification("...", key) commands. */
-        val NOTIFICATION = setOf("open", "dismiss")
-
-        /** The tile's size, readable anywhere a declaration of the same name doesn't shadow it. */
-        val TILE = setOf("cols", "rows", "tileWidth", "tileHeight", "screenWidth", "screenHeight", "screenInset", "corners")
-
         /** Whether Linux is installed and running, for widgets with `optional` sources. Shadowable like [TILE]. */
         const val LINUX = "linux"
 
@@ -164,63 +50,11 @@ class Compiler private constructor(
         /** Where a command has a number, which can't be anything but digits, a dot and a sign. */
         const val NUMBER = "‹number›"
 
-        /** Builtins that always give a number (or null, which reads as …). */
-        private val NUMBERS = setOf("int", "round", "floor", "ceil", "abs", "fixed", "len", "count", "sum", "min", "max", "clamp")
-
         private const val MAX_SHAPES = 8
 
         /** A URL whose scheme and host are fixed text, so no value can send it elsewhere. */
         private val FIXED_HOST = Regex("""^https?://[A-Za-z0-9.-]+(:[0-9]+)?/""")
-
-        /**
-         * Whether bash reads every [VALUE] in [shape] as the quoted word sh(...) made it: not inside quotes,
-         * where its own quotes would close them or `$(...)` still runs; not in a comment, which a line break
-         * in it would end; and not in a heredoc, whose body expands whatever it holds.
-         */
-        fun quotable(shape: String): Boolean {
-            if (VALUE !in shape) return true
-            if ("<<" in shape) return false
-            var quote: Char? = null
-            var comment = false
-            var i = 0
-            while (i < shape.length) {
-                if (shape.startsWith(VALUE, i)) {
-                    if (quote != null || comment) return false
-                    i += VALUE.length
-                    continue
-                }
-                val c = shape[i]
-                when {
-                    comment -> if (c == '\n') comment = false
-                    quote == '\'' -> if (c == '\'') quote = null
-                    // " and `, and $'...', where a backslash escapes the next character.
-                    quote != null -> if (c == '\\') i++ else if (c == quote || quote == '$' && c == '\'') quote = null
-                    c == '\\' -> i++
-                    c == '$' && shape.getOrNull(i + 1) == '\'' -> {
-                        quote = '$'
-                        i++
-                    }
-                    c == '\'' || c == '"' || c == '`' -> quote = c
-                    c == '#' && (i == 0 || shape[i - 1].isWhitespace() || shape[i - 1] in ";&|(") -> comment = true
-                }
-                i++
-            }
-            return true
-        }
-        private val WIDGET_PROPS = setOf("size", "minSize", "page", "order", "padding", "background")
     }
-
-    enum class Children { NONE, UI, DRAW }
-
-    class Kind(
-        val props: Set<String>,
-        val children: Children,
-    )
-
-    class DrawOp(
-        val arity: IntRange,
-        val group: Boolean = false,
-    )
 
     /** Compile-time mirror of an [Env] frame. Only the first [visible] names resolve (lets see earlier lets only). */
     private class Scope(
@@ -263,6 +97,13 @@ class Compiler private constructor(
     /** Where a handler calls screen() or close(), which need a screen { } block. */
     private var screenAction: Int? = null
 
+    /**
+     * Compiling a handler or a state's first value, which run once when they run: the only places a
+     * value may come out different each time, as random() does. A let or a property re-reads its
+     * value whenever what it reads changes, and would jump.
+     */
+    private var chance = false
+
     /** Where a handler calls screen(), which an app has no use for. */
     private var openScreen: Int? = null
 
@@ -275,6 +116,16 @@ class Compiler private constructor(
     ) {
         val v = SINCE[feature] ?: return
         if (v > (needs?.first ?: 1)) needs = Triple(v, feature, pos)
+    }
+
+    private fun <T> chancy(f: () -> T): T {
+        val was = chance
+        chance = true
+        try {
+            return f()
+        } finally {
+            chance = was
+        }
     }
 
     private fun fail(
@@ -304,7 +155,7 @@ class Compiler private constructor(
         for (d in body.decls) {
             when (d) {
                 is Decl.Source -> globals[slots[d.name]!!] = source(d)
-                is Decl.State -> globals[slots[d.name]!!] = Global.State(d.name, ex(d.init, root), d.persist)
+                is Decl.State -> globals[slots[d.name]!!] = Global.State(d.name, chancy { ex(d.init, root) }, d.persist)
                 is Decl.Asset -> globals[slots[d.name]!!] = asset(d)
                 is Decl.Let -> {
                     val g = let(d)
@@ -335,8 +186,7 @@ class Compiler private constructor(
         val screen = screens.firstOrNull()?.let { screen(it) }
         val onTap = body.handlers.firstOrNull()?.let { handler(it, root) }
         if (screen == null) screenAction?.let { fail("screen() and close() need a screen { } block in the widget", it) }
-        // Declared, so a launcher too old for it says "update the launcher" instead of failing on an unknown name.
-        needs?.let { (v, feature, pos) -> if (level < v) fail("$feature needs owl $v: add meta { owl: $v }", pos) }
+        checkLevel(level)
 
         return Program(
             name = ast.name ?: "widget",
@@ -363,6 +213,11 @@ class Compiler private constructor(
             terminal = terminal,
             nodeCount = tileNodes,
         )
+    }
+
+    /** Declared, so a launcher too old for a feature says "update the launcher" instead of failing on an unknown name. */
+    private fun checkLevel(level: Int) {
+        needs?.let { (v, feature, pos) -> if (level < v) fail("$feature needs owl $v: add meta { owl: $v }", pos) }
     }
 
     /**
@@ -413,25 +268,17 @@ class Compiler private constructor(
         val tree = items(body.items, root, Children.UI)
         if (tree.isEmpty()) fail("an app needs at least one node, like Text { text: \"hi\" }", 0)
         openScreen?.let { fail("screen() opens a widget's screen { }; an app is open already, and close() closes it", it) }
-        needs?.let { (v, feature, pos) -> if (level < v) fail("$feature needs owl $v: add meta { owl: $v }", pos) }
+        checkLevel(level)
         return Program(
             name = ast.name ?: "app",
             meta = meta,
             level = level,
-            size = null,
-            minSize = 1 to 1,
-            page = 1,
-            order = 0,
-            padding = 12.0,
-            background = null,
             globals = globals,
-            root = emptyList(),
             screen = tree,
             screenTitle = body.props.firstOrNull { it.name == "title" }?.let { ex(it.value, root) },
             back = backProp?.let { ex(it.value, root) },
             onBack = onBackHandler?.let { handler(it, root) },
             edge = edge,
-            onTap = null,
             triggers = triggers,
             commands = commands.toList(),
             warnings = warnings.toList(),
@@ -489,7 +336,7 @@ class Compiler private constructor(
             commands += prefix + it
             return
         }
-        val shapes = shapes(e, s)?.takeIf { it.all(::quotable) }
+        val shapes = shapes(e, s)?.takeIf { it.all(ShellWords::quotable) }
         if (shapes == null) {
             commands += "$prefix$what built from widget values"
             return
@@ -694,7 +541,8 @@ class Compiler private constructor(
                 ex(d.expr, root)
             }
         if (d.kind != "every" && expr.const != null) fail("${d.kind} needs a value that changes, like a state or a source", d.expr.pos)
-        return Trigger(d.kind, expr, handler(Handler(d.kind, d.stmts, d.pos), root, TRIGGER_PARAMS[d.kind].orEmpty()), d.pos)
+        if (d.first) since(ON_FIRST, d.pos)
+        return Trigger(TriggerKind.of(d.kind), expr, handler(Handler(d.kind, d.stmts, d.pos), root, TRIGGER_PARAMS[d.kind].orEmpty()), d.pos, d.first)
     }
 
     private fun component(d: Decl.Component): Component {
@@ -883,69 +731,111 @@ class Compiler private constructor(
         params: List<String> = HANDLER_PARAMS[h.name].orEmpty(),
     ): Action {
         val inner = Scope(scope, params)
-        val stmts =
-            h.stmts.map { s ->
-                when (s) {
-                    is Stmt.Assign -> {
-                        val slot = slots[s.name]
-                        if (slot == null || s.name !in states) {
-                            fail(if (slot == null) "unknown state '${s.name}'; declare it with: state ${s.name} = ..." else "'${s.name}' isn't a state and can't be assigned", s.pos)
-                        }
-                        val call = s.value as? Expr.Call
-                        if (call?.name == "run") {
-                            // result = run("..."): the output arrives later, when the command finishes.
-                            if (call.args.size != 1 || call.named.isNotEmpty()) fail("run takes one command", call.pos)
-                            val command = ex(call.args[0], inner)
-                            listCommand(call.args[0], command, inner, "run(…)")
-                            guest = true
-                            val run: (Env) -> Unit = { env -> env.host.runInto(command(env).toString(), slot) }
-                            return@map run
-                        }
-                        if (call?.name == "post") return@map post(call, inner, slot)
-                        val v = ex(s.value, inner)
-                        val run: (Env) -> Unit = { env -> env.host.write(slot, v(env)) }
-                        run
-                    }
-                    is Stmt.Do -> {
-                        val call = s.call as Expr.Call
-                        if (call.name == "post") return@map post(call, inner, null)
-                        val arity = Builtins.actions[call.name] ?: fail("'${call.name}' isn't an action (${Builtins.actions.keys.joinToString()})", call.pos)
-                        if (call.args.size !in arity) fail("${call.name} takes ${arity.first}-${arity.last} values", call.pos)
-                        val args = call.args.map { ex(it, inner) }
-                        if (call.name == "media") {
-                            (args[0].const as? Str)?.v?.let { c -> if (c !in MEDIA) fail("media takes ${MEDIA.joinToString()}", call.pos) }
-                        }
-                        if (call.name == "volume") {
-                            (args[0].const as? Str)?.v?.let { c -> if (c !in VOLUME && c.toDoubleOrNull() == null) fail("volume takes a level in percent, or ${VOLUME.joinToString()}", call.pos) }
-                        }
-                        if (call.name == "torch") {
-                            (args[0].const as? Str)?.v?.let { c -> if (c !in TORCH) fail("torch takes true, false, ${TORCH.joinToString()}", call.pos) }
-                        }
-                        if (call.name == "notification") {
-                            (args[0].const as? Str)?.v?.let { c -> if (c !in NOTIFICATION) fail("notification takes ${NOTIFICATION.joinToString()} and a notification's key", call.pos) }
-                        }
-                        since(call.name, call.pos)
-                        if (call.name == "sound") webFile(call.args[0], inner, "sound")
-                        if (call.name == "screen" || call.name == "close") screenAction = screenAction ?: call.pos
-                        if (call.name == "screen") openScreen = openScreen ?: call.pos
-                        if (call.name in setOf("run", "terminal", "app")) {
-                            listCommand(call.args[0], args[0], inner, "${call.name}(…)")
-                            // A tap on terminal(...) or app(...) without Linux offers to install it; run(...) would fail unseen.
-                            if (call.name == "run") guest = true
-                        }
-                        val run: (Env) -> Unit = { env -> env.host.act(call.name, args.map { it(env) }) }
-                        run
-                    }
-                }
-            }
+        val run = chancy { block(h.stmts, inner) }
         return Action(params) { env, values ->
             val e = if (params.isEmpty()) env else env.child(*Array(params.size) { values.getOrElse(it) { Null } })
             // Handlers run from touch events: a failure is reported, never thrown into the UI.
             try {
-                env.host.budget.run { stmts.forEach { it(e) } }
+                env.host.budget.run { run(e) }
             } catch (x: RuntimeException) {
                 env.host.report("${h.name}: ${x.message ?: x}")
             }
+        }
+    }
+
+    /** Handler statements, in order. A `let` opens a frame that the statements after it in its block see. */
+    private fun block(
+        stmts: List<Stmt>,
+        scope: Scope,
+    ): (Env) -> Unit {
+        val steps = ArrayList<(Env) -> Env>()
+        var s = scope
+        for (st in stmts) {
+            when (st) {
+                is Stmt.Let -> {
+                    since(HANDLER_LET, st.pos)
+                    // One name, one meaning: a let named like a state would read as the let but assign the state.
+                    if (st.name in slots || lookup(st.name, s) != null) fail("'${st.name}' is already a name here; give the let a name of its own", st.pos)
+                    val v = ex(st.value, s)
+                    s = Scope(s, listOf(st.name))
+                    steps += { env -> env.child(v(env)) }
+                }
+                is Stmt.If -> {
+                    since(HANDLER_IF, st.pos)
+                    val cond = ex(st.cond, s)
+                    val then = block(st.then, s)
+                    val orElse = block(st.orElse, s)
+                    steps += { env ->
+                        if (cond(env).truthy) then(env) else orElse(env)
+                        env
+                    }
+                }
+                else -> {
+                    val run = statement(st, s)
+                    steps += { env ->
+                        run(env)
+                        env
+                    }
+                }
+            }
+        }
+        return { env -> steps.fold(env) { e, step -> step(e) } }
+    }
+
+    /** An assignment or an action. */
+    private fun statement(
+        s: Stmt,
+        scope: Scope,
+    ): (Env) -> Unit {
+        return when (s) {
+            is Stmt.Assign -> {
+                val slot = slots[s.name]
+                // A state wins, even with a local of its name in reach (onChange: value = value): widgets did that before owl 9.
+                if (s.name !in states && lookup(s.name, scope) is Ref.Local) fail("'${s.name}' is a let or a value given to the handler, not a state, so it can't be assigned", s.pos)
+                if (slot == null || s.name !in states) {
+                    fail(if (slot == null) "unknown state '${s.name}'; declare it with: state ${s.name} = ..." else "'${s.name}' isn't a state and can't be assigned", s.pos)
+                }
+                val call = s.value as? Expr.Call
+                if (call?.name == "run") {
+                    // result = run("..."): the output arrives later, when the command finishes.
+                    if (call.args.size != 1 || call.named.isNotEmpty()) fail("run takes one command", call.pos)
+                    val command = ex(call.args[0], scope)
+                    listCommand(call.args[0], command, scope, "run(…)")
+                    guest = true
+                    val run: (Env) -> Unit = { env -> env.host.runInto(command(env).toString(), slot) }
+                    run
+                } else if (call?.name == "post") {
+                    post(call, scope, slot)
+                } else {
+                    val v = ex(s.value, scope)
+                    val run: (Env) -> Unit = { env -> env.host.write(slot, v(env)) }
+                    run
+                }
+            }
+            is Stmt.Do -> {
+                val call = s.call as Expr.Call
+                if (call.name == "post") return post(call, scope, null)
+                val arity = Builtins.actions[call.name] ?: fail("'${call.name}' isn't an action (${Builtins.actions.keys.joinToString()})", call.pos)
+                if (call.args.size !in arity) fail("${call.name} takes ${arity.first}-${arity.last} values", call.pos)
+                val args = call.args.map { ex(it, scope) }
+                ACTION_WORDS[call.name]?.let { w ->
+                    val c = (args[0].const as? Str)?.v
+                    if (c != null && c !in w.words && !(w.numbers && c.toDoubleOrNull() != null)) fail(w.message, call.pos)
+                }
+                since(call.name, call.pos)
+                if (call.name == "sound") webFile(call.args[0], scope, "sound")
+                if (call.name == "screen" || call.name == "close") screenAction = screenAction ?: call.pos
+                if (call.name == "screen") openScreen = openScreen ?: call.pos
+                if (call.name in setOf("run", "terminal", "app")) {
+                    listCommand(call.args[0], args[0], scope, "${call.name}(…)")
+                    // A tap on terminal(...) or app(...) without Linux offers to install it; run(...) would fail unseen.
+                    if (call.name == "run") guest = true
+                }
+                val run: (Env) -> Unit = { env -> env.host.act(call.name, args.map { it(env) }) }
+                run
+            }
+            // block() takes the others.
+            is Stmt.If, is Stmt.Let -> throw IllegalStateException("not a single statement")
         }
     }
 
@@ -1212,6 +1102,18 @@ class Compiler private constructor(
         if (e.name in setOf("cmd", "stream", "http", "file")) fail("${e.name}(...) is a source: source x = ${e.name}(\"...\")", e.pos)
         val b = Builtins.all[e.name] ?: fail("unknown function '${e.name}'", e.pos)
         since(e.name, e.pos)
+        if (e.name == "fmtTime" && e.args.size > 2) since(FMT_TIME_ZONE, e.pos)
+        if (e.name == "flatten" && e.args.size > 1) since(FLATTEN_DEPTH, e.pos)
+        if ((e.name == "random" || e.name == "shuffle" && e.args.size == 1) && !chance) {
+            fail(
+                if (e.name == "random") {
+                    "random() gives a new number each time it's read; set a state with it in a handler, like onTap: roll = random(1, 6), or use hash(seed, i) in a let"
+                } else {
+                    "shuffle(list) shuffles anew each time it's read; give it a seed, shuffle(list, seed), with the seed a state set to random(1000000) in a handler"
+                },
+                e.pos,
+            )
+        }
         if (e.named.isNotEmpty()) fail("${e.name} takes no named arguments", e.named[0].second.pos)
         if (e.args.size < b.min || e.args.size > b.max) {
             fail("${e.name} takes ${if (b.min == b.max) "${b.min}" else "${b.min}-${b.max}"} arguments, not ${e.args.size}", e.pos)
@@ -1221,7 +1123,7 @@ class Compiler private constructor(
         val run: (Env) -> Value = { env ->
             env.host.budget.tick()
             try {
-                impl(Args(List(args.size) { args[it](env) }, emptyMap(), env.host))
+                impl(Args(List(args.size) { args[it](env) }, env.host))
             } catch (x: WidgetError) {
                 throw x
             } catch (x: RuntimeException) {
@@ -1232,129 +1134,6 @@ class Compiler private constructor(
             return runCatching { Ev.of(run(Env.root(constHost))) }.getOrElse { x -> fail(x.message ?: "can't evaluate", e.pos) }
         }
         return numericCall(e.name, args, Ev(null, run))
-    }
-
-    // The numeric fast path; see Ev.fast. A node that has it evaluates as a
-    // boundary: its children run on doubles, and the result is boxed once.
-
-    /** Could be a number: not a constant of another kind, which would always leave the fast path. */
-    private fun numberish(ev: Ev) = ev.const == null || ev.const is Num
-
-    /** [ev]'s fast form, or reading it the general way: a number, or NaN for anything else. */
-    private fun fastOf(ev: Ev): Fast =
-        ev.fast ?: Fast { env ->
-            val v = ev(env)
-            if (v is Num) v.v else Double.NaN
-        }
-
-    /** [slow] evaluated through [fast], falling back to [slow] when an input isn't a number. */
-    private fun numeric(
-        slow: Ev,
-        fast: Fast,
-    ): Ev {
-        if (slow.const != null) return slow
-        return Ev(
-            null,
-            { env ->
-                val d = fast.of(env)
-                if (d.isNaN()) slow(env) else Num(d)
-            },
-            fast,
-        )
-    }
-
-    private fun arithmetic(
-        op: String,
-        a: Ev,
-        b: Ev,
-        slow: Ev,
-    ): Ev {
-        if (slow.const != null || !numberish(a) || !numberish(b)) return slow
-        val x = fastOf(a)
-        val y = fastOf(b)
-        // Same results as Builtins.operator for two numbers.
-        when (op) {
-            "+" -> return numeric(slow) { env -> x.of(env) + y.of(env) }
-            "-" -> return numeric(slow) { env -> x.of(env) - y.of(env) }
-            "*" -> return numeric(slow) { env -> x.of(env) * y.of(env) }
-            // Dividing by zero gives 0, but not for a NaN: that may be a null.
-            "/" -> return numeric(slow) { env ->
-                val p = x.of(env)
-                val q = y.of(env)
-                if (q == 0.0 && !p.isNaN()) 0.0 else p / q
-            }
-            "%" -> return numeric(slow) { env ->
-                val p = x.of(env)
-                val q = y.of(env)
-                if (q == 0.0 && !p.isNaN()) 0.0 else ((p % q) + q) % q
-            }
-        }
-        // A comparison of two plain values gains nothing: Builtins.operator compares numbers unboxed already.
-        if (a.fast == null && b.fast == null) return slow
-        val test: ((Int) -> Boolean)? =
-            when (op) {
-                "<" -> { c -> c < 0 }
-                "<=" -> { c -> c <= 0 }
-                ">" -> { c -> c > 0 }
-                ">=" -> { c -> c >= 0 }
-                else -> null
-            }
-        if (test == null) return slow
-        return Ev(null) { env ->
-            val p = x.of(env)
-            val q = y.of(env)
-            if (p.isNaN() || q.isNaN()) slow(env) else bool(test(p.compareTo(q)))
-        }
-    }
-
-    private fun numericCall(
-        name: String,
-        args: List<Ev>,
-        slow: Ev,
-    ): Ev {
-        if (!args.all(::numberish)) return slow
-        val f = args.map(::fastOf)
-        val fast: Fast =
-            when {
-                (name == "min" || name == "max") && f.size >= 2 -> {
-                    val min = name == "min"
-                    Fast { env ->
-                        env.host.budget.tick()
-                        var acc = f[0].of(env)
-                        for (i in 1 until f.size) acc = if (min) Math.min(acc, f[i].of(env)) else Math.max(acc, f[i].of(env))
-                        acc
-                    }
-                }
-                f.size == 1 && name in Builtins.numeric1 -> {
-                    val g = Builtins.numeric1.getValue(name)
-                    val x = f[0]
-                    Fast { env ->
-                        env.host.budget.tick()
-                        g.of(x.of(env))
-                    }
-                }
-                f.size == 2 && name in Builtins.numeric2 -> {
-                    val g = Builtins.numeric2.getValue(name)
-                    val x = f[0]
-                    val y = f[1]
-                    Fast { env ->
-                        env.host.budget.tick()
-                        g.of(x.of(env), y.of(env))
-                    }
-                }
-                f.size == 3 && name in Builtins.numeric3 -> {
-                    val g = Builtins.numeric3.getValue(name)
-                    val x = f[0]
-                    val y = f[1]
-                    val z = f[2]
-                    Fast { env ->
-                        env.host.budget.tick()
-                        g.of(x.of(env), y.of(env), z.of(env))
-                    }
-                }
-                else -> return slow
-            }
-        return numeric(slow, fast)
     }
 
     /** Host for folding constants: no slots, no theme, no clock. */

@@ -18,11 +18,12 @@ import dev.omalauncher.linux.Agent
 import dev.omalauncher.linux.Proot
 import dev.omalauncher.linux.pacmanInstall
 import dev.omalauncher.linux.runJob
-import dev.omalauncher.linux.shellQuote
 import dev.omalauncher.ui.Palette
+import dev.omalauncher.theme.Style
 import dev.omalauncher.theme.StyleStore
 import dev.omalauncher.upgrade.Managed
 import dev.omalauncher.upgrade.Policy
+import dev.omalauncher.upgrade.writeAtomically
 import dev.omalauncher.widgets.lang.CompileError
 import dev.omalauncher.widgets.lang.Compiler
 import dev.omalauncher.widgets.lang.Json
@@ -110,6 +111,37 @@ class WidgetEngine(
     /** The store's widgets, and its apps. */
     val market = Market(this, OwlKind.Widget)
     val appMarket = Market(this, OwlKind.App)
+
+    /** Settings' "update all" for widgets and apps is running. */
+    var updating by mutableStateOf(false)
+        private set
+
+    /** Why the last "update all" stopped short, or null. */
+    var updateError by mutableStateOf<String?>(null)
+        private set
+
+    /** Reloads both catalogs now, on the engine's scope: leaving settings doesn't cancel it. */
+    fun checkUpdates() {
+        scope.launch { for (m in listOf(market, appMarket)) m.refresh() }
+    }
+
+    /** Installs every store update, on the engine's scope: leaving settings doesn't stop it. */
+    fun updateAll() {
+        if (updating) return
+        updating = true
+        updateError = null
+        scope.launch {
+            try {
+                for (m in listOf(market, appMarket)) {
+                    for (e in m.updates) {
+                        m.install(e, page = 0)?.let { updateError = "${e.name}: $it" }
+                    }
+                }
+            } finally {
+                updating = false
+            }
+        }
+    }
 
     /** Widgets whose packages the user already agreed to (store installs): install them without asking again. */
     private val autoInstall = HashSet<String>()
@@ -239,7 +271,10 @@ class WidgetEngine(
         }
     }
 
-    private fun agentWidgetFile(agent: Agent) = "agent-${agent.bin}.owl"
+    private fun agentWidgetFile(agent: Agent) = "$AGENT_PREFIX${agent.bin}.owl"
+
+    /** An agent's terminal tile, which [addAgentWidget] made. */
+    fun isAgentWidget(spec: WidgetSpec) = spec.file.name.startsWith(AGENT_PREFIX)
 
     /** File names of the widgets this app ships, defaults and examples alike. */
     private val bundledFiles by lazy {
@@ -249,7 +284,7 @@ class WidgetEngine(
     /** The user (or their agent) wrote it: not shipped with the app, installed from the store, shared with them, or an agent's tile. */
     fun isOwnWidget(spec: WidgetSpec): Boolean {
         val name = spec.file.name
-        return name !in bundledFiles && !name.startsWith("agent-") && !name.startsWith(TERMINAL_PREFIX) && !name.startsWith("shared-") &&
+        return name !in bundledFiles && !isAgentWidget(spec) && !name.startsWith(TERMINAL_PREFIX) && !name.startsWith(Shared.FILE_PREFIX) &&
             listOf(market, appMarket).none { m -> m.installed.values.any { it.file == name } }
     }
 
@@ -410,6 +445,10 @@ class WidgetEngine(
                         if (path != null && path.endsWith(".owl")) changes.trySend(Unit)
                     }
                 }.also { it.startWatching() }
+            launch {
+                snapshotFlow { loaded }.first { it }
+                snapshotFlow { runtime.style.style[Style.COLUMNS] }.collect { layout.regrid(it, pages.map(::itemsOn)) }
+            }
             changes.trySend(Unit)
             for (unit in changes) {
                 // Editors write in several steps (truncate, write, rename); let them finish.
@@ -502,16 +541,12 @@ class WidgetEngine(
                 else -> "error: unknown command '${parts.getOrNull(1).orEmpty()}'"
             }
         withContext(Dispatchers.IO) {
-            runCatching {
-                val tmp = File(inboxDir, ".$id.tmp")
-                tmp.writeText(reply + "\n")
-                tmp.renameTo(File(inboxDir, "$id.done"))
-            }
+            runCatching { writeAtomically(File(inboxDir, "$id.done"), (reply + "\n").toByteArray()) }
         }
     }
 
     /** The first load is done; see [reload]. */
-    private var loaded = false
+    private var loaded by mutableStateOf(false)
 
     private val previews = Previews(context)
     private val previewQueue = Channel<String>(Channel.UNLIMITED)
@@ -545,10 +580,10 @@ class WidgetEngine(
         if (skip != null) return writeCheck(spec.file, hash, "ok", "preview-skipped $hash $skip")
         val inst = instance(spec)!!
         if (program.kind != OwlKind.Widget) return previewView(spec, inst, hash)
-        val cells = layout.cell(name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, GRID_COLUMNS) to h.coerceAtLeast(1) } ?: (3 to 3)
+        val cells = tileCells(spec)
         val (w, h) = layout.tilePx(cells, context.resources.displayMetrics)
         previewing += name
-        val loaded: suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
+        val loaded = loadedOf(inst)
         var screen: String? = null
         val ok =
             try {
@@ -570,6 +605,12 @@ class WidgetEngine(
         writeCheck(spec.file, hash, "ok", listOfNotNull(line, screen).joinToString("\n"))
     }
 
+    /** The tile's cells as it's laid out on home, else as the file sizes it. */
+    private fun tileCells(spec: WidgetSpec) = layout.cell(spec.file.name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, layout.columns) to h.coerceAtLeast(1) } ?: (3 to 3)
+
+    /** Waits until every source of [inst] has a value; what a preview draws after. */
+    private fun loadedOf(inst: WidgetInstance): suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
+
     /** An app has no tile: its view is drawn at the phone's size, as it opens, and noted as its screen. */
     private suspend fun previewView(
         spec: WidgetSpec,
@@ -581,7 +622,7 @@ class WidgetEngine(
         previewing += name
         val ok =
             try {
-                previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, File(previewDir, "$name.screen.png"), { snapshotFlow { inst.loaded() }.first { it } })
+                previews.renderScreen(spec, inst, dm.widthPixels, dm.heightPixels, File(previewDir, "$name.screen.png"), loadedOf(inst))
             } finally {
                 previewing.remove(name)
             }
@@ -606,14 +647,14 @@ class WidgetEngine(
     ) {
         val spec = specs.firstOrNull { it.file.name == name } ?: return
         val inst = instance(spec) ?: return
-        val cells = layout.cell(name)?.let { it.w to it.h } ?: spec.size?.let { (w, h) -> w.coerceIn(1, GRID_COLUMNS) to h.coerceAtLeast(1) } ?: (3 to 3)
+        val cells = tileCells(spec)
         val (w, h) = layout.tilePx(cells, context.resources.displayMetrics)
         val themes = withContext(Dispatchers.IO) { runtime.themes.bundled }
         val before = Palette.current
         val dir = File(previewDir, "themes")
         previewing += name
         try {
-            val loaded: suspend () -> Unit = { snapshotFlow { inst.loaded() }.first { it } }
+            val loaded = loadedOf(inst)
             withTimeoutOrNull(30_000) { loaded() }
             val dm = context.resources.displayMetrics
             for ((n, screen) in screens.ifEmpty { listOf("") }.withIndex()) {
@@ -689,8 +730,6 @@ class WidgetEngine(
             broken(file, previous, stamp, Source(text).format(e), hash, OwlKind.of(text))
         } catch (e: RuntimeException) {
             broken(file, previous, stamp, e.toString(), hash, OwlKind.of(text))
-        } catch (e: StackOverflowError) {
-            broken(file, previous, stamp, "too deeply nested", hash, OwlKind.of(text))
         }
     }
 
@@ -752,12 +791,7 @@ class WidgetEngine(
     ) {
         val text = "sha256 $hash\nresult $result\n" + (preview?.let { "$it\n" } ?: "")
         scope.launch(errorWriter) {
-            runCatching {
-                checkDir.mkdirs()
-                val tmp = File(checkDir, ".${file.name}.tmp")
-                tmp.writeText(text)
-                tmp.renameTo(File(checkDir, "${file.name}.txt"))
-            }
+            runCatching { writeAtomically(File(checkDir, "${file.name}.txt"), text.toByteArray()) }
         }
     }
 
@@ -776,15 +810,10 @@ class WidgetEngine(
             missing.clear()
             return
         }
-        // pacman -T prints the packages that aren't installed. Names come from widget files: quote them.
-        val script =
-            (if (packages.isEmpty()) "" else "pacman -T ${packages.joinToString(" ") { shellQuote(it) }} | sed 's/^/pkg /'; ") +
-                (if (bins.isEmpty()) "" else "for c in ${bins.joinToString(" ") { shellQuote(it) }}; do command -v \"\$c\" >/dev/null || echo \"bin \$c\"; done; ") +
-                "true"
-        val out = runCatching { services.shells.run(script, 20).out }.getOrElse { return }
-        val lines = out.lines().map { it.trim() }
-        val missingPkgs = lines.filter { it.startsWith("pkg ") }.map { it.removePrefix("pkg ") }.toSet()
-        val missingBins = lines.filter { it.startsWith("bin ") }.map { it.removePrefix("bin ") }.toSet()
+        val out = runCatching { services.shells.run(DependencyCheck.script(packages, bins), 20).out }.getOrElse { return }
+        val found = DependencyCheck.parse(out)
+        val missingPkgs = found.packages
+        val missingBins = found.programs
         for (spec in specs) {
             val p = spec.program ?: continue
             val need = p.requires["pacman"].orEmpty().filter { it in missingPkgs }
@@ -854,6 +883,7 @@ class WidgetEngine(
         /** The default terminal tile, which [addTerminalWidget] copies. */
         private const val TERMINAL_ASSET = "45-terminal.owl"
         private const val TERMINAL_PREFIX = "terminal-"
+        private const val AGENT_PREFIX = "agent-"
 
         /** The widgets dir, relative to the guest home. */
         const val GUEST_DIR = ".config/omalauncher/widgets"

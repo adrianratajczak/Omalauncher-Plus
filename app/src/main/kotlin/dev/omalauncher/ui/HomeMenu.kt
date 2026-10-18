@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.omalauncher.Runtime
+import dev.omalauncher.linux.LinuxState
 import dev.omalauncher.widgets.lang.OwlKind
 import dev.omalauncher.widgets.newOwlCommand
 import kotlinx.coroutines.launch
@@ -58,7 +60,7 @@ fun HomeMenu(
     val agent = runtime.agents.default
     val agentName = agent?.name?.lowercase() ?: "an agent"
     // These need Linux; without it they open its install sheet.
-    val linux = runtime.bootstrap.isInstalled
+    val linux = runtime.bootstrap.state.collectAsState().value == LinuxState.Installed
     val scope = rememberCoroutineScope()
 
     /** Recolors right away, then applies the full theme: its first background, like omarchy-theme-set, and the guest's configs. */
@@ -69,20 +71,23 @@ fun HomeMenu(
     }
     Menu(onDismiss = { state.homeMenuOpen = false }) {
         // What to create sits on the row itself: one tap starts the agent, each kind with its own prompt.
-        Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 10.dp)) {
-            BasicText("create with $agentName", style = Mono.copy(fontSize = TextSize.Item))
-            // Pulled left by the buttons' own padding, so the first bracket lines up with the label.
-            Row(Modifier.offset(x = (-8).dp)) {
-                for ((kind, label) in listOf(OwlKind.Widget to "widget", OwlKind.App to "app")) {
-                    BracketAction(label, Palette.accent) {
-                        state.homeMenuOpen = false
-                        when {
-                            !linux -> state.show(SettingsPage.Linux)
-                            agent == null -> state.show(SettingsPage.Agents)
-                            else -> runtime.terminal(newOwlCommand(agent.bin, kind), "New ${kind.word}", agent)
+        // Settings at the top right, as in the drawer.
+        Row(Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp, top = 10.dp)) {
+                BasicText("create with $agentName", style = Mono.copy(fontSize = TextSize.Item))
+                // Pulled left by the buttons' own padding, so the first bracket lines up with the label.
+                Row(Modifier.offset(x = (-8).dp)) {
+                    for ((kind, label) in listOf(OwlKind.Widget to "widget", OwlKind.App to "app")) {
+                        BracketAction(label, Palette.accent) {
+                            state.homeMenuOpen = false
+                            if (linux) state.withAgent(runtime, "New ${kind.word}") { newOwlCommand(it, kind) } else state.show(SettingsPage.Linux)
                         }
                     }
                 }
+            }
+            SettingsButton(runtime) {
+                state.homeMenuOpen = false
+                state.show()
             }
         }
         MenuItem("browse store") {

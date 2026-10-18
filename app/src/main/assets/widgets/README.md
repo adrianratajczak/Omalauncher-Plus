@@ -84,7 +84,7 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 8 }` | the language version the widget needs (this launcher has 8; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8; using them without declaring it is an error |
+| `meta { owl: 9 }` | the language version the widget needs (this launcher has 9; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8, and `parseTime`, `fmtAgo`, `fmtNum`, `random`, `shuffle`, `hash`, `fmtTime`'s zone and language, `set`, `remove`, `merge`, `reduce`, `scan`, `groupBy`, `toJson`, `capitalize`, `asin`, `acos`, `flatten`'s depth, `on … first`, and `if` and `let` in handlers 9; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -151,7 +151,7 @@ Statements that run on their own, written like handlers, at the top of the widge
 | `every 10s { ... }` | every 10 seconds while the page is live (on screen or next to it), like a source. At least 1 s |
 | `at endsAt { ... }` | when the clock reaches `endsAt`, a Unix time in seconds, even while the page is off screen. Again for each new time; 0 or null means none. A time that passed while the launcher wasn't running runs at the next start, so set it to 0 in the statements. While the phone sleeps it can run a little late, when it wakes |
 | `when cond { ... }` | each time `cond` turns true, including when it's already true as the widget starts |
-| `on x { ... }` | each time `x` changes, with `value` (the new one) and `old`. Not for its first value, and null (loading) doesn't count as a change |
+| `on x { ... }` | each time `x` changes, with `value` (the new one) and `old`. Not for its first value, and null (loading) doesn't count as a change. `on x first { ... }` runs for the first value too, with `old` null: for saving what a source fetched, from the first fetch on (owl 9) |
 
 ```owl
 widget "focus" {
@@ -187,16 +187,78 @@ second is held back and reported (one that changes what it watches would otherwi
 
 | functions | |
 |---|---|
-| numbers | `min max clamp(x, lo, hi) lerp(a, b, t) round(x, digits) floor ceil abs sqrt pow sin cos tan atan2 rad deg sign num(x, default) int` |
-| text | `sh(x)` (one shell word, see Values in commands), `enc(x)` (one URL component, see Values in URLs) `str len trim upper lower lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
-| format | `fmtBytes(n)` → `1.5G`, `fmtDuration(seconds)` → `2h 5m`, `fmtTime(seconds, "EEE HH:mm")` |
+| numbers | `min max clamp(x, lo, hi) lerp(a, b, t) round(x, digits) floor ceil abs sqrt pow sin cos tan asin acos atan2 rad deg sign num(x, default) int` |
+| text | `sh(x)` (one shell word, see Values in commands), `enc(x)` (one URL component, see Values in URLs) `str len trim upper lower capitalize lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
+| format | `fmtBytes(n)` → `1.5G`, `fmtDuration(seconds)` → `2h 5m`, `fmtTime(seconds, "EEE HH:mm")`, `fmtAgo(t, now)` → `5m`, `fmtNum(n)` → `12,345`; see Dates and numbers |
 | weather | `weatherIcon(code, night)`: omarchy's weather glyph for a wttr.in `weatherCode` (show it with `font: icon`) |
-| parsing | `match(s, regex)` (groups of the first match), `matchAll(s, regex)`, `parseJson(s)` |
-| lists | `range(n)` or `range(a, b, step)`, `map filter find any all count sum avg sort sortBy reverse take drop first last indexOf unique flatten`, `keys values entries get(obj, key, default)` |
+| parsing | `match(s, regex)` (groups of the first match), `matchAll(s, regex)`, `parseJson(s)`, `toJson(x)` (JSON text), `parseTime(s)` (a date in text as Unix seconds) |
+| chance | `random()`, `random(n)`, `random(a, b)`, `shuffle(list)`, only in handlers and a state's first value; `hash(...)` and `shuffle(list, seed)` anywhere. See Chance |
+| lists | `range(n)` or `range(a, b, step)`, `map filter find any all count sum avg sort sortBy reverse take drop first last indexOf unique`, `flatten(list, depth)` (depth 1 unless given), `keys values entries get(obj, key, default)`; see Changing lists and maps |
 | colors | theme names `accent foreground background muted surface border red green yellow blue magenta cyan orange` plus `bright_*`, `color0`…`color15`; `#7aa2f7`; `rgb(r, g, b, a)`, `hsl(h, s, l, a)`, `alpha(c, 0.5)`, `mix(a, b, t)` |
 | gradients | `linear(x0, y0, x1, y1, [colors])`, `radial(cx, cy, r, [colors])`: fills in Canvas |
 
 Prefer theme color names: widgets then follow theme changes.
+
+### Dates and numbers
+
+Times are Unix seconds, which `fmtTime(t, pattern)` shows in the phone's time zone and language.
+Text from an API or a feed becomes one with `parseTime` (owl 9):
+
+- `parseTime("2026-10-17T10:04:00Z")`: ISO 8601, with or without seconds, fractions and a zone (`Z`,
+  `+02`, `+0200`, `+02:00`); also `2026-10-17` alone, a space for the `T`, iCalendar's `20261017T100400Z`,
+  and the dates of RSS feeds and HTTP headers, `Sat, 17 Oct 2026 10:04:00 GMT`.
+- `parseTime(s, pattern)` reads other forms, with the same letters as `fmtTime`:
+  `parseTime("17.10.2026 18:30", "dd.MM.yyyy HH:mm")`. Month and day names are read in English, as APIs
+  write them. Without a date it's today (`parseTime(d.time, "HH:mm")`), and without a time, midnight.
+- A date without a zone is in the phone's time zone; a third value names another:
+  `parseTime("2026-10-17 18:30", null, "Europe/Amsterdam")`.
+- Text that isn't a date gives `null`.
+
+`fmtTime` takes a zone and a language after the pattern, both optional (`null` is the phone's):
+`fmtTime(t, "HH:mm", "America/New_York")` for a world clock, `fmtTime(t, "EEE d MMM", "UTC", "en")` for a
+date that shouldn't move or change language. A zone is a name like `Europe/Berlin` or an offset like
+`+05:30`. With `"UTC"` it shows a duration under a day as a clock: `fmtTime(187, "m:ss", "UTC")` → `3:07`.
+
+`fmtAgo(t, now)` is how long ago `t` was, short: `now`, `5m`, `3h`, `2d`, `6w`, `1y`, or `in 10m` for a
+time still to come. Take `now` from a clock source (`source now = clock every 1m`), so it stays current.
+
+`fmtNum(x)` groups thousands the phone's way (`12,345` or `12.345`), rounded to whole numbers;
+`fmtNum(x, 2)` keeps two digits after the point. A map sets more: `fmtNum(x, {compact: true})` shortens
+to `950`, `1.5k`, `12k`, `3.4M`, `2.5B`, `1T` (one digit under 10, none above, unless `digits` says);
+`sign: true` puts a `+` before numbers above zero, for changes: `fmtNum(delta, {digits: 1, sign: true})`.
+
+### Changing lists and maps
+
+Values never change in place; these give a changed copy, to assign to a state in a handler (owl 9):
+
+- `set(list, i, v)` with item `i` replaced (counted from the end when negative; an index that isn't in
+  the list changes nothing), and `set(map, key, v)` with that field set. `remove(list, i)` and
+  `remove(map, key)` leave it out: `onTap: todos = remove(todos, i)`.
+- `merge(a, b, ...)` is the maps' fields together, a later one's winning: `merge(item, {done: true})`.
+- `reduce(list, (total, x, i) => ..., start)` works through a list to one value, and `scan` gives each
+  step on the way, like a running total: `scan(days, (sum, d) => sum + d.spent, 0)`.
+- `groupBy(list, x => x.day)` is a map from each key to the items that have it, in the order they came.
+
+### Chance
+
+`random()` is a number from 0 up to 1, `random(n)` a whole number from 0 to n - 1 (an index:
+`list[random(len(list))]`), and `random(a, b)` one from a to b, both included (owl 9). `shuffle(list)`
+is the list in a random order. They give something new each time, so they work only where a value
+is taken once: in handlers and triggers, and as a state's first value. A `let` or a property is worked
+out again whenever what it reads changes, and would jump:
+
+```owl
+meta { owl: 9 }
+state roll = random(1, 6)
+state deck = shuffle(range(52))
+Button { text: "roll ${roll}"; onTap: roll = random(1, 6) }
+```
+
+For values that look random but stay put, like stars in a sky or a scattering of leaves, use
+`hash(...)`: a number from 0 up to 1 that is always the same for the same values. `hash(i)` differs for
+every `i`, and `hash(seed, i)` with a `seed` state that a tap sets to `random(1000000)` gives a new
+pattern for each tap. `shuffle(list, seed)` likewise shuffles the same way for the same seed, in a let:
+`let order = shuffle(cards, seed)`.
 
 Persisted values are kept by the launcher (not in the widget file), per file name, and
 must be plain data: numbers, text, lists and maps (not colors). Store times as absolute
@@ -264,6 +326,30 @@ value hasn't loaded yet (`…`) does nothing. After an action,
 the widget that ran it refreshes its sources; other widgets keep their own intervals:
 `onTap: { count = count + 1; run("notify-send hi") }`
 
+Since owl 9 a handler can also choose with `if`, and name a value with `let` for the statements after it:
+
+```owl
+meta { owl: 9 }
+state score = 0
+state best = 0
+state sound = true
+onTap: {
+  let gained = x > tileWidth / 2 ? 2 : 1
+  score = score + gained
+  if score > best {
+    best = score
+    if sound { sound("https://example.com/win.ogg") }
+  } else if gained == 2 {
+    haptic()
+  }
+}
+Text { text: "${score} (best ${best})" }
+```
+
+Statements run in order and state writes take effect at once, so a `let` taken first keeps a value as it
+was before the handler changed it: `let was = food; food = food + 1`. A `let` is seen by the statements
+after it in its block (and blocks inside them), and needs a name not used for a state, source or let.
+
 | action | does |
 |---|---|
 | `terminal("btop")` | opens the command in a terminal window; `terminal(cmd, "title")` |
@@ -324,9 +410,9 @@ app "todo" {
 }
 ```
 
-Handlers have no `if`, so a `post` that only sometimes goes out takes a null URL the rest of the time:
-`every 5s { tok = post(code == "" ? null : "https://…/token", {code: code}) }` polls only while there is a
-code. The URLs are listed for review like `http(...)`'s, as `http POST https://…`, under the same rule:
+A `post` that only sometimes goes out goes in an `if` (owl 9):
+`every 5s { if code != "" { tok = post("https://…/token", {code: code}) } }` polls only while there is a
+code. Before owl 9 the same took a null URL, which sends nothing. The URLs are listed for review like `http(...)`'s, as `http POST https://…`, under the same rule:
 keep the server fixed and put values into the URL with `enc(...)`.
 
 ## Sounds

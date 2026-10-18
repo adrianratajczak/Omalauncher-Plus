@@ -272,12 +272,29 @@ sealed interface Global {
  * is live, `at` when the clock reaches a Unix time, `when` each time a
  * condition turns true, `on` each time a value changes (with `value` and `old`).
  */
+/** What a trigger reacts to, by the word that starts it. */
+enum class TriggerKind(
+    val word: String,
+) {
+    EVERY("every"),
+    AT("at"),
+    WHEN("when"),
+    ON("on"),
+    ;
+
+    companion object {
+        fun of(word: String) = entries.first { it.word == word }
+    }
+}
+
 class Trigger(
-    val kind: String,
+    val kind: TriggerKind,
     /** The condition, time or value; for `every`, the interval in seconds. */
     val expr: Ev,
     val action: Action,
     val pos: Int,
+    /** `on x first`: also for x's first value, with `old` null. */
+    val first: Boolean = false,
 )
 
 class Program(
@@ -285,15 +302,16 @@ class Program(
     val meta: Map<String, Value>,
     /** The owl language version it needs; see [Compiler.LEVEL]. */
     val level: Int,
-    val size: Pair<Int, Int>?,
-    val minSize: Pair<Int, Int>,
-    val page: Int,
-    val order: Int,
+    /** The tile's: an app has none of these. */
+    val size: Pair<Int, Int>? = null,
+    val minSize: Pair<Int, Int> = 1 to 1,
+    val page: Int = 1,
+    val order: Int = 0,
     /** Tile padding in dp, and an optional tile background. */
-    val padding: Double,
-    val background: Ev?,
+    val padding: Double = 12.0,
+    val background: Ev? = null,
     val globals: List<Global>,
-    val root: List<WNode>,
+    val root: List<WNode> = emptyList(),
     /** The screen { } block: a full-screen view over the same globals, opened with screen(). */
     val screen: List<WNode>? = null,
     val screenTitle: Ev? = null,
@@ -302,7 +320,7 @@ class Program(
     val onBack: Action? = null,
     /** An app's `edge`: its view runs on under the navigation bar, which `screenInset` measures. */
     val edge: Boolean = false,
-    val onTap: Action?,
+    val onTap: Action? = null,
     val triggers: List<Trigger>,
     /** Shell commands this widget can run, known without running it; for reviewing shared widgets. */
     val commands: List<String>,

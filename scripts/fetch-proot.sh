@@ -20,7 +20,8 @@ PROOT=5.1.107.96
 TALLOC=2.5.0
 SHMEM=0.7
 # The NDK Termux builds proot with (its clang version string), and one GitHub's Ubuntu runners have.
-NDK_VERSION=30.0.16248370
+# app/build.gradle.kts builds wlbridge with it too, and CI installs it from here.
+NDK_VERSION=28.2.13676358
 
 fetch() {
   local pkg=$1 file=$2 sha=$3

@@ -20,6 +20,9 @@ class LangTest {
         var slots = Array<Value>(program?.globals?.size ?: 0) { Null }
         val actions = ArrayList<String>()
 
+        // Before init: a state's first value can call builtins, which tick it.
+        override val budget = Budget(10_000)
+
         init {
             program?.globals?.forEachIndexed { i, g -> if (g is Global.State) slots[i] = g.init(Env.root(this)) }
         }
@@ -59,8 +62,6 @@ class LangTest {
         ) {
             actions += "post $slot $url $body $headers"
         }
-
-        override val budget = Budget(10_000)
     }
 
     /** Compiles a widget with one Text and evaluates its text. */
@@ -91,6 +92,40 @@ class LangTest {
         assertEquals("2.5", text("5 / 2"))
         assertEquals("1", text("-3 % 2"))
         assertEquals("true", text("1 < 2 && 2 <= 2"))
+    }
+
+    /** A list walks its items and a map its {key, value} entries, both capped; anything else walks nothing. */
+    @Test fun iterableWalksListsAndMaps() {
+        assertEquals(listOf(Num(1.0), Num(2.0)), Builtins.iterable(Lst(listOf(Num(1.0), Num(2.0)))))
+        val entries = Builtins.iterable(Obj(mapOf("a" to Num(1.0))))
+        assertEquals("a", (entries.single() as Obj).fields["key"].toString())
+        assertEquals(Num(1.0), (entries.single() as Obj).fields["value"])
+        assertEquals(emptyList<Value>(), Builtins.iterable(Str("abc")))
+        assertEquals(Builtins.MAX_LIST, Builtins.iterable(Lst(List(Builtins.MAX_LIST + 5) { Num(it.toDouble()) })).size)
+        assertEquals(Builtins.MAX_LIST, Builtins.iterable(Obj((0..Builtins.MAX_LIST + 5).associate { "k$it" to Null })).size)
+    }
+
+    /** Every fast-path built-in gives what its general entry gives for numbers, or NaN; NaN in is NaN out. */
+    @Test fun everyNumericFastPathMatchesItsBuiltin() {
+        val inputs = listOf(0.0, -0.0, 1.0, -2.5, 0.5, 3.7, 1e6, -1e-9, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)
+
+        fun check(
+            name: String,
+            xs: List<Double>,
+            fast: Double,
+        ) {
+            val general = runCatching { Builtins.all.getValue(name).impl(Args(xs.map(::Num), null)) }.getOrNull()
+            val where = "$name(${xs.joinToString()})"
+            if (xs.any { it.isNaN() }) assertTrue("$where: NaN in, $fast out", fast.isNaN())
+            if (fast.isNaN()) return
+            assertTrue("$where: fast $fast, general $general", general is Num && general.v == fast)
+        }
+        assertEquals(setOf("floor", "ceil", "abs", "sqrt", "sin", "cos", "tan", "rad", "deg", "sign", "asin", "acos", "round"), Builtins.numeric1.keys)
+        for ((name, g) in Builtins.numeric1) for (x in inputs) check(name, listOf(x), g.of(x))
+        for ((name, g) in Builtins.numeric2) for (x in inputs) for (y in inputs) check(name, listOf(x, y), g.of(x, y))
+        for ((name, g) in Builtins.numeric3) {
+            for (x in inputs) for (y in inputs) for (z in inputs) check(name, listOf(x, y, z), g.of(x, y, z))
+        }
     }
 
     /** Arithmetic runs on doubles when every input is a number, and the general way when one isn't: same results. */
@@ -144,6 +179,22 @@ class LangTest {
     @Test fun textNumbersCompareAsNumbers() {
         assertEquals("true", text("s > 9", "state s = \"10\""))
         assertEquals("true", text("s == 10", "state s = \"10\""))
+    }
+
+    /** Numbers read as JavaScript writes them, with no exponent from 1e-6 to 1e21. */
+    @Test fun numbersReadWithoutAnExponent() {
+        assertEquals("1792231445.5", text("1792231445.5"))
+        assertEquals("-12345678.25", text("-12345678.25"))
+        assertEquals("10000000000000000", text("10000000000000000"))
+        assertEquals("0.0005", text("0.0005"))
+        assertEquals("0.0000025", text("0.0000025"))
+        assertEquals("0.25", text("0.25"))
+        assertEquals("1e-7", text("0.0000001"))
+        assertEquals("-2.5e-7", text("-0.00000025"))
+        assertEquals("1e+21", text("1000000000000000000000"))
+        assertEquals("1.5e+22", text("15000000000000000000000"))
+        assertEquals("0", text("-0"))
+        assertEquals("{\"t\":1792231445.5}", text("toJson({t: 1792231445.5})", owl9))
     }
 
     @Test fun listsAndLambdas() {
@@ -430,6 +481,23 @@ class LangTest {
         assertTrue(compileError("widget \"t\" {\nlet d = 2 persist\nText { text: d }\n}").contains("persist a state"))
     }
 
+    @Test fun persistedValuesRoundTrip() {
+        val p = Compiler.compile("widget \"t\" {\nsource x = clock every 10s\nstate n = 0 persist\nstate m = 1\nlet h = history(x, 5) persist\nText { text: n }\n}")
+        assertEquals(listOf(1, 3), PersistedValues.slots(p))
+        val hist = Lst((1..5).map { Num(it.toDouble()) })
+        val text = PersistedValues.encode(p, listOf(Num(7.0), hist), 1000)
+        assertTrue(text.startsWith("{\"v\":1,\"savedAt\":1000,"))
+        assertEquals(mapOf(1 to Num(7.0), 3 to hist), PersistedValues.decode(p, text, 1010.0))
+        // A history older than its source takes to fill it (5 samples, 10 s apart) is all gap: state still comes back.
+        assertEquals(mapOf(1 to Num(7.0)), PersistedValues.decode(p, text, 1050.0))
+        // A longer one saved by an older version of the widget keeps its newest samples.
+        val long = PersistedValues.encode(p, listOf(Num(7.0), Lst((1..8).map { Num(it.toDouble()) })), 1000)
+        assertEquals(Lst((4..8).map { Num(it.toDouble()) }), PersistedValues.decode(p, long, 1001.0)[3])
+        // Unknown names, values of the wrong shape and unreadable files restore nothing.
+        assertEquals(emptyMap<Int, Value>(), PersistedValues.decode(p, "{\"v\":1,\"savedAt\":1000,\"values\":{\"old\":1,\"h\":3}}", 1001.0))
+        assertEquals(emptyMap<Int, Value>(), PersistedValues.decode(p, "not json", 1001.0))
+    }
+
     @Test fun jsonWritesWhatItReads() {
         val v = Json.parse("""{"a": [1, 2.5, null, true], "s": "q\"\\\n\u0001", "o": {}}""")
         assertEquals(v, Json.parse(Json.write(v)!!))
@@ -565,7 +633,7 @@ class LangTest {
                 }
                 """.trimIndent(),
             )
-        assertEquals(listOf("every", "at", "when", "on", "when"), p.triggers.map { it.kind })
+        assertEquals(listOf("every", "at", "when", "on", "when"), p.triggers.map { it.kind.word })
         assertEquals(Num(10.0), p.triggers[0].expr.const)
         val host = TestHost(p)
         val root = Env.root(host)
@@ -692,6 +760,9 @@ class LangTest {
         assertTrue(!p.needsLinux)
         assertTrue(compileError("widget {\n meta { owl: 4 }\n Text { text: 1; onTap: volume(\"loud\") } }").contains("volume takes"))
         assertTrue(compileError("widget {\n meta { owl: 4 }\n Text { text: 1; onTap: notification(\"read\", \"k\") } }").contains("notification takes"))
+        assertTrue(compileError("widget {\n Text { text: 1; onTap: media(\"rewind\") } }").contains("media takes"))
+        // The words themselves, and a level in percent for volume, compile.
+        Compiler.compile("widget {\n meta { owl: 7 }\n Text { text: 1; onTap: { media(\"next\"); volume(\"50\"); volume(\"mute\"); torch(\"on\"); notification(\"dismiss\", \"k\") } } }")
         assertTrue(compileError("widget {\n Text { text: 1; onTap: volume(50) } }").contains("volume needs owl 4"))
     }
 
@@ -805,8 +876,8 @@ class LangTest {
         for (bad in listOf("echo ${'$'}{v}", "echo \\\"${'$'}{sh(v)}\\\"", "echo '${'$'}{sh(v)}'", "echo ok # ${'$'}{sh(v)}", "cat <<E\\n${'$'}{sh(v)}\\nE")) {
             assertEquals(bad, listOf("run(…) built from widget values"), commands("onTap: run(\"$bad\")"))
         }
-        assertTrue(Compiler.quotable("a ${Compiler.VALUE} 'b' \"c\" d#e ${Compiler.VALUE}"))
-        assertFalse(Compiler.quotable("a ${'$'}'x ${Compiler.VALUE}'"))
+        assertTrue(ShellWords.quotable("a ${Compiler.VALUE} 'b' \"c\" d#e ${Compiler.VALUE}"))
+        assertFalse(ShellWords.quotable("a ${'$'}'x ${Compiler.VALUE}'"))
         assertEquals(listOf("jq"), Compiler.compile("widget {\n meta { owl: 6 }\n state v = \"x\"\n onTap: run(\"jq -n ${'$'}{sh(v)}\")\n Text { text: v } }").programs.toList())
     }
 
@@ -861,5 +932,297 @@ class LangTest {
         } finally {
             Locale.setDefault(was)
         }
+    }
+
+
+    private val owl9 = "meta { owl: 9 }"
+
+    private fun <T> inLocale(
+        locale: Locale,
+        f: () -> T,
+    ): T {
+        val was = Locale.getDefault()
+        Locale.setDefault(locale)
+        try {
+            return f()
+        } finally {
+            Locale.setDefault(was)
+        }
+    }
+
+    private fun widgetError(expr: String): String =
+        try {
+            text(expr, owl9)
+            fail("expected an error")
+            ""
+        } catch (e: WidgetError) {
+            e.message!!
+        }
+
+    @Test fun parseTimeReadsIsoDates() {
+        assertEquals("1792231440", text("parseTime(\"2026-10-17T10:04:00Z\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"2026-10-17T12:04:00+02:00\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"2026-10-17T12:04+0200\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"2026-10-17 05:04:00-05\")", owl9))
+        assertEquals("40.25", text("parseTime(\"2026-10-17T10:04:00.250Z\") % 100", owl9))
+        assertEquals("1792231440", text("parseTime(\"20261017T100400Z\")", owl9))
+        // Without a zone: in the one given, or the phone's.
+        assertEquals("1792195200", text("parseTime(\"2026-10-17\", \"\", \"UTC\")", owl9))
+        assertEquals("1792188000", text("parseTime(\"2026-10-17\", null, \"Europe/Berlin\")", owl9))
+        assertEquals("1792195200", text("parseTime(\"20261017\", \"\", \"UTC\")", owl9))
+        assertEquals("null", text("parseTime(\"tomorrow\")", owl9))
+        assertEquals("null", text("parseTime(\"2026-13-40\")", owl9))
+        assertEquals("null", text("parseTime(null)", owl9))
+    }
+
+    @Test fun parseTimeReadsFeedDates() {
+        assertEquals("1792231440", text("parseTime(\"Sat, 17 Oct 2026 10:04:00 GMT\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"Sat, 17 Oct 2026 12:04:00 +0200\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"Sat, 17 Oct 2026 03:04:00 PDT\")", owl9))
+        assertEquals("1792231440", text("parseTime(\"17 Oct 2026 10:04 UT\")", owl9))
+    }
+
+    @Test fun parseTimeTakesAPattern() {
+        // English month names, whatever the phone's language: dates come from APIs.
+        inLocale(Locale.GERMAN) {
+            assertEquals("1792231440", text("parseTime(\"Oct 17, 2026 10:04 AM\", \"MMM d, yyyy h:mm a\", \"UTC\")", owl9))
+            assertEquals("1792231440", text("parseTime(\"oct 17, 2026 10:04 am\", \"MMM d, yyyy h:mm a\", \"UTC\")", owl9))
+        }
+        assertEquals("1792231440", text("parseTime(\"17.10.2026 12:04 +02:00\", \"dd.MM.yyyy HH:mm XXX\")", owl9))
+        assertEquals("1792195200", text("parseTime(\"17.10.2026\", \"dd.MM.yyyy\", \"UTC\")", owl9))
+        // A time without a date is today's.
+        val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay() * 86400
+        assertEquals("${today + 10 * 3600 + 4 * 60}", text("parseTime(\"10:04\", \"HH:mm\", \"UTC\")", owl9))
+        assertEquals("null", text("parseTime(\"10h04\", \"HH:mm\", \"UTC\")", owl9))
+        assertTrue(widgetError("parseTime(\"x\", \"HH:mm{\")").contains("bad time pattern"))
+    }
+
+    @Test fun fmtTimeTakesAZoneAndALanguage() {
+        assertEquals("05:30", text("fmtTime(0, \"HH:mm\", \"Asia/Kolkata\")", owl9))
+        assertEquals("02:00", text("fmtTime(0, \"HH:mm\", \"+02:00\")", owl9))
+        assertEquals("Sonntag", text("fmtTime(${3 * 86400 + 43200}, \"EEEE\", \"UTC\", \"de\")", owl9))
+        inLocale(Locale.GERMAN) { assertEquals("Sunday", text("fmtTime(${3 * 86400 + 43200}, \"EEEE\", null, \"en\")", owl9)) }
+        // A duration under a day, as a clock.
+        assertEquals("3:07", text("fmtTime(187, \"m:ss\", \"UTC\")", owl9))
+        assertTrue(compileError("widget {\n $owl9\n Text { text: fmtTime(0, \"HH\", \"Mars/Olympus\") } }").contains("unknown time zone 'Mars/Olympus'"))
+        assertTrue(widgetError("fmtTime(0, \"HH\", str(\"Mars/Olympus\") + tileWidth)").contains("unknown time zone"))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: fmtTime(0, \"HH\", \"UTC\") } }").contains("needs owl 9"))
+        // Two values still need no owl 9.
+        assertEquals("00", text("fmtTime(0, \"mm\")", "meta { owl: 8 }"))
+    }
+
+    @Test fun fmtAgoIsShort() {
+        assertEquals("now", text("fmtAgo(0, 59)", owl9))
+        assertEquals("5m", text("fmtAgo(0, 300)", owl9))
+        assertEquals("2h", text("fmtAgo(0, 7300)", owl9))
+        assertEquals("3d", text("fmtAgo(0, 3 * 86400)", owl9))
+        assertEquals("2w", text("fmtAgo(0, 20 * 86400)", owl9))
+        assertEquals("1y", text("fmtAgo(0, 400 * 86400)", owl9))
+        assertEquals("in 10m", text("fmtAgo(600, 0)", owl9))
+        assertEquals("null", text("fmtAgo(null, 5)", owl9))
+        assertEquals("null", text("fmtAgo(5, null)", owl9))
+    }
+
+    @Test fun fmtNumGroupsAndCompacts() {
+        inLocale(Locale.ENGLISH) {
+            assertEquals("1,234,568", text("fmtNum(1234567.891)", owl9))
+            assertEquals("1,234.50", text("fmtNum(1234.5, 2)", owl9))
+            assertEquals("-12", text("fmtNum(\"-12.4\")", owl9))
+            assertEquals("0", text("fmtNum(-0.2)", owl9))
+            assertEquals("950", text("fmtNum(950, {compact: true})", owl9))
+            assertEquals("1.5k", text("fmtNum(1500, {compact: true})", owl9))
+            assertEquals("2k", text("fmtNum(2000, {compact: true})", owl9))
+            assertEquals("12k", text("fmtNum(12345, {compact: true})", owl9))
+            assertEquals("1M", text("fmtNum(999999, {compact: true})", owl9))
+            assertEquals("2.5B", text("fmtNum(2500000000, {compact: true})", owl9))
+            assertEquals("-1.5k", text("fmtNum(-1500, {compact: true})", owl9))
+            assertEquals("1.23k", text("fmtNum(1234, {compact: true, digits: 2})", owl9))
+            assertEquals("4.5", text("fmtNum(4.5, {compact: true})", owl9))
+            assertEquals("+3.2", text("fmtNum(3.2, {digits: 1, sign: true})", owl9))
+            assertEquals("-3.2", text("fmtNum(-3.2, {digits: 1, sign: true})", owl9))
+            assertEquals("0.0", text("fmtNum(-0.01, {digits: 1, sign: true})", owl9))
+            assertEquals("+1.5k", text("fmtNum(1500, {compact: true, sign: true})", owl9))
+            assertEquals("null", text("fmtNum(null)", owl9))
+            assertTrue(widgetError("fmtNum(1, \"lots\")").contains("fmtNum takes a number of digits"))
+        }
+        inLocale(Locale.GERMAN) {
+            assertEquals("1.234,50", text("fmtNum(1234.5, 2)", owl9))
+            assertEquals("1,5k", text("fmtNum(1500, {compact: true})", owl9))
+        }
+        // Its own zero goes too: not ١٫٠k.
+        inLocale(Locale.forLanguageTag("ar-EG")) {
+            assertEquals("١k", text("fmtNum(1000, {compact: true})", owl9))
+            assertEquals("١٫٥k", text("fmtNum(1500, {compact: true})", owl9))
+        }
+    }
+
+    @Test fun hashAndSeededShuffleMatchTheQuickshellRuntime() {
+        // The same numbers as runtimes/quickshell's JavaScript, which copies these two functions.
+        assertEquals("0.10352621669881046", text("hash(\"a\")", owl9))
+        assertEquals("0.47707845945842564", text("hash(7)", owl9))
+        assertEquals("0.4710701135918498", text("hash(\"seed\", 3)", owl9))
+        assertEquals("0.1301283857319504", text("hash(\"ab\", \"c\")", owl9))
+        assertEquals("0.9770175418816507", text("hash(\"a\", \"bc\")", owl9))
+        // Numbers, lists and maps hash as they read.
+        assertEquals("0.20254519511945546", text("hash(1792231445.5)", owl9))
+        assertEquals("0.31604075129143894", text("hash([1, 2.5])", owl9))
+        assertEquals("0.5861964426003397", text("hash({a: 1})", owl9))
+        assertEquals("[9, 3, 4, 1, 6, 8, 7, 5, 10, 2]", text("shuffle(range(1, 11), 42)", owl9))
+        assertEquals("[b, c, d, a]", text("shuffle([\"a\", \"b\", \"c\", \"d\"], \"x\")", owl9))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: hash(1) } }").contains("hash needs owl 9"))
+    }
+
+    @Test fun randomOnlyInHandlersAndFirstValues() {
+        val p = Compiler.compile("widget {\n $owl9\n state roll = random(1, 6)\n state order = []\n onTap: { roll = random(1, 6); order = shuffle(range(5)) }\n Text { text: roll } }")
+        val host = TestHost(p)
+        val seen = HashSet<Value>()
+        repeat(200) {
+            p.onTap!!.run(Env.root(host), emptyList())
+            seen += host.slots[0]
+            assertEquals((0 until 5).map { Num(it.toDouble()) }, (host.slots[1] as Lst).items.sortedBy { (it as Num).v })
+        }
+        assertEquals((1..6).map { Num(it.toDouble()) }.toSet(), seen)
+        val e = compileError("widget {\n $owl9\n let r = random()\n Text { text: r } }")
+        assertTrue(e, e.contains("random() gives a new number each time it's read"))
+        assertTrue(compileError("widget {\n $owl9\n Text { text: shuffle([1, 2]) } }").contains("give it a seed"))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n state r = 0\n onTap: r = random()\n Text { text: r } }").contains("random needs owl 9"))
+    }
+
+    @Test fun randomRanges() {
+        val p = Compiler.compile("widget {\n $owl9\n state a = 0\n state b = 0\n state c = 0\n onTap: { a = random(); b = random(3); c = random(6, 4) }\n Text { text: a } }")
+        val host = TestHost(p)
+        repeat(100) {
+            p.onTap!!.run(Env.root(host), emptyList())
+            val a = (host.slots[0] as Num).v
+            assertTrue(a >= 0 && a < 1)
+            assertTrue((host.slots[1] as Num).v in setOf(0.0, 1.0, 2.0))
+            assertTrue((host.slots[2] as Num).v in setOf(4.0, 5.0, 6.0))
+        }
+    }
+
+
+    @Test fun setAndRemoveCopyListsAndMaps() {
+        assertEquals("[1, 9, 3]", text("set([1, 2, 3], 1, 9)", owl9))
+        assertEquals("[1, 2, 9]", text("set([1, 2, 3], -1, 9)", owl9))
+        assertEquals("[1, 2, 3]", text("set([1, 2, 3], 5, 9)", owl9))
+        assertEquals("{a: 1, b: 3}", text("set({a: 1, b: 2}, \"b\", 3)", owl9))
+        assertEquals("{a: 1, c: 3}", text("set({a: 1}, \"c\", 3)", owl9))
+        assertEquals("{a: 1}", text("set(null, \"a\", 1)", owl9))
+        assertEquals("[1, 3]", text("remove([1, 2, 3], 1)", owl9))
+        assertEquals("[1, 2]", text("remove([1, 2, 3], -1)", owl9))
+        assertEquals("[1, 2, 3]", text("remove([1, 2, 3], \"x\")", owl9))
+        assertEquals("{b: 2}", text("remove({a: 1, b: 2}, \"a\")", owl9))
+        // In a handler, the edit a widget used to spell take(i) + [v] + drop(i + 1).
+        val p = Compiler.compile("widget {\n $owl9\n state xs = [1, 2, 3]\n onTap: xs = set(xs, 0, xs[0] + 10)\n Text { text: xs } }")
+        val host = TestHost(p)
+        p.onTap!!.run(Env.root(host), emptyList())
+        assertEquals("[11, 2, 3]", host.slots[0].toString())
+    }
+
+    @Test fun mergeReduceScanGroupBy() {
+        assertEquals("{a: 1, b: 3, c: 4}", text("merge({a: 1, b: 2}, {b: 3}, null, {c: 4})", owl9))
+        assertEquals("{a: 1, b: 3}", text("{a: 1, b: 2}.merge({b: 3})", owl9))
+        assertEquals("24", text("reduce([2, 3, 4], (p, x) => p * x, 1)", owl9))
+        assertEquals("3", text("[5, 9, 2].reduce((best, x, i) => x > 8 ? i + 2 : best, 0)", owl9))
+        assertEquals("start", text("reduce([], (a, x) => a + x, \"start\")", owl9))
+        assertEquals("[1, 3, 6, 10]", text("scan([1, 2, 3, 4], (sum, x) => sum + x, 0)", owl9))
+        assertEquals("{odd: [1, 3], even: [2]}", text("groupBy([1, 2, 3], x => x % 2 == 1 ? \"odd\" : \"even\")", owl9))
+        assertEquals("[]", text("keys(groupBy([], x => x))", owl9))
+    }
+
+    @Test fun toJsonCapitalizeFlattenAndInverseTrig() {
+        assertEquals("{\"a\":[1,\"x\",null,true],\"b\":{\"c\":0.5}}", text("toJson({a: [1, \"x\", null, true], b: {c: 0.5}})", owl9))
+        assertEquals("\"say \\\"hi\\\"\"", text("toJson(\"say \\\"hi\\\"\")", owl9))
+        // A constant fails as the widget compiles, one read at run time when it's evaluated.
+        assertTrue(compileError("widget {\n $owl9\n Text { text: toJson([accent]) } }").contains("toJson takes numbers"))
+        assertTrue(widgetError("toJson([tileWidth, accent])").contains("toJson takes numbers"))
+        assertEquals("Hello world", text("capitalize(\"hello world\")", owl9))
+        assertEquals("", text("capitalize(\"\")", owl9))
+        assertEquals("null", text("capitalize(null)", owl9))
+        assertEquals("[1, 2, [3, [4]]]", text("flatten([1, [2, [3, [4]]]])", owl9))
+        assertEquals("[1, 2, 3, [4]]", text("flatten([1, [2, [3, [4]]]], 2)", owl9))
+        assertEquals("[1, 2, 3, 4]", text("flatten([1, [2, [3, [4]]]], 10)", owl9))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: flatten([], 2) } }").contains("flatten with a depth needs owl 9"))
+        assertEquals("90", text("round(deg(asin(1)))", owl9))
+        assertEquals("60", text("round(deg(acos(0.5)))", owl9))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n Text { text: asin(1) } }").contains("asin needs owl 9"))
+    }
+
+    @Test fun onFirstRunsForTheFirstValueToo() {
+        val p = Compiler.compile("widget {\n $owl9\n state n = 1\n state saved = 0\n on n first { saved = value }\n on n { saved = old }\n Text { text: n } }")
+        assertEquals(listOf(true, false), p.triggers.map { it.first })
+        // `first` is still a function everywhere else.
+        assertEquals("1", text("first([1, 2])", owl9))
+        val e = compileError("widget {\n meta { owl: 8 }\n state n = 1\n on n first { n = 2 }\n Text { text: n } }")
+        assertTrue(e, e.contains("on … first needs owl 9"))
+        assertTrue(compileError("widget {\n $owl9\n state n = 1\n on n later { n = 2 }\n Text { text: n } }").contains("expected '{'"))
+    }
+
+
+    /** Compiles an owl 9 widget with states a, b and c (0) and the handler [h], taps it, and gives the states and actions. */
+    private fun tap(
+        h: String,
+        decls: String = "",
+    ): String {
+        val p = Compiler.compile("widget {\n $owl9\n state a = 0\n state b = 0\n state c = 0\n $decls\n onTap: $h\n Text { text: a } }")
+        val host = TestHost(p)
+        p.onTap!!.run(Env.root(host), listOf(Num(5.0), Num(7.0)))
+        return "a=${host.slots[0]} b=${host.slots[1]} c=${host.slots[2]}" + host.actions.joinToString("") { "; $it" }
+    }
+
+    @Test fun ifInHandlersChooses() {
+        assertEquals("a=1 b=0 c=0", tap("{ if x < 6 { a = 1 } else { b = 1 } }"))
+        assertEquals("a=0 b=1 c=0", tap("{ if x > 6 { a = 1 } else { b = 1 } }"))
+        assertEquals("a=0 b=0 c=1", tap("{ if x > 6 { a = 1 } else if y > 6 { c = 1 } else { b = 1 } }"))
+        assertEquals("a=0 b=0 c=0", tap("{ if x > 6 { a = 1 } else if y > 9 { c = 1 } }"))
+        // A handler that is just an if, and ifs inside ifs.
+        assertEquals("a=2 b=0 c=0", tap("if x == 5 { if y == 7 { a = 2 } else { a = 3 } }"))
+        // Skipped actions don't run: no `run("true")` to stand in for nothing.
+        assertEquals("a=0 b=0 c=0; notify on", tap("{ if a == 1 { run(\"paplay x.wav\") }; if a == 0 { notify(\"on\") } }"))
+        assertEquals(listOf("paplay x.wav"), Compiler.compile("widget {\n $owl9\n state s = false\n onTap: if s { run(\"paplay x.wav\") }\n Text { text: s } }").commands)
+    }
+
+    @Test fun letInHandlersNamesAValue() {
+        // A let keeps the value it had: assignments after it don't change it.
+        assertEquals("a=12 b=0 c=12", tap("{ let sum = x + y; a = sum; a = 100; c = sum; a = sum }"))
+        assertEquals("a=1 b=5 c=0", tap("{ let old = a; a = 1; b = old + x }"))
+        // Visible after it in its block and the blocks inside, not outside.
+        assertEquals("a=2 b=0 c=0", tap("{ if x == 5 { let k = 2; if y == 7 { a = k } } }"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { if true { let k = 2 }; a = k }\n Text { text: a } }").contains("unknown name 'k'"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { a = k; let k = 2 }\n Text { text: a } }").contains("unknown name 'k'"))
+        // Lambdas see it too.
+        assertEquals("a=[6, 7] b=0 c=0", tap("{ let base = x; a = [1, 2].map(i => i + base) }"))
+        // A state called let still assigns.
+        assertEquals("a=0 b=0 c=0", tap("{ let = 3 }", "state let = 0"))
+    }
+
+    @Test fun handlersWithIfAndLetInTriggers() {
+        val p = Compiler.compile("widget {\n $owl9\n state n = 3\n state out = \"\"\n on n { let d = value - old; if d > 0 { out = \"up ${'$'}{d}\" } else { out = \"down\" } }\n Text { text: n } }")
+        val host = TestHost(p)
+        p.triggers.single().action.run(Env.root(host), listOf(Num(5.0), Num(3.0)))
+        assertEquals(Str("up 2"), host.slots[1])
+    }
+
+    @Test fun ifAndLetInHandlersSayWhatsWrong() {
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n state a = 0\n onTap: if a { a = 1 }\n Text { text: a } }").contains("if in a handler needs owl 9"))
+        assertTrue(compileError("widget {\n meta { owl: 8 }\n state a = 0\n onTap: { let b = 1; a = b }\n Text { text: a } }").contains("let in a handler needs owl 9"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { let a = 1 }\n Text { text: a } }").contains("'a' is already a name here"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { let x = 1 }\n Text { text: a } }").contains("'x' is already a name here"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: { let k = 1; k = 2 }\n Text { text: a } }").contains("'k' is a let or a value given to the handler"))
+        assertTrue(compileError("widget {\n $owl9\n state a = 0\n onTap: if a a = 1\n Text { text: a } }").contains("expected '{'"))
+    }
+
+    /** Older widgets assign a state that shares its name with a handler value, a loop variable or a parameter. */
+    @Test fun assigningAStateNamedLikeALocalStillWorks() {
+        val p =
+            Compiler.compile(
+                "widget {\n meta { owl: 4 }\n state value = 50\n state x = 0\n" +
+                    " component Pick(x) { Text { text: x; onTap: x = 1 } }\n" +
+                    " Column {\n Slider { value: value; onChange: value = value }\n for x in [1, 2] { Text { text: x; onTap: x = 5 } }\n Pick { x: 3 } } }",
+            )
+        val host = TestHost(p)
+        val slider = (p.root.single() as WNode.Element).children.first() as WNode.Element
+        slider.handlers["onChange"]!!.run(Env.root(host), listOf(Num(70.0)))
+        assertEquals(Num(70.0), host.slots[0])
     }
 }

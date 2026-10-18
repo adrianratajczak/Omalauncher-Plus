@@ -483,13 +483,6 @@ private fun AppHit.actions(handlers: AppHandlers): List<Pair<String, () -> Unit>
     }
 
 /** The app's icon and its silhouette, each null until loaded or if it has none. */
-private fun AppHit.icons(runtime: Runtime): Pair<ImageBitmap?, ImageBitmap?> =
-    when (this) {
-        is AppHit.Linux -> runtime.linuxIcons[app.id] to runtime.linuxMasks[app.id]
-        is AppHit.Owl -> runtime.owlIcon(spec, mono = false) to runtime.owlIcon(spec, mono = true)
-        is AppHit.Android -> runtime.androidApps.icons[app.key] to runtime.androidApps.masks[app.key]
-        is AppHit.Shortcut -> runtime.androidApps.icons[shortcut.key] to runtime.androidApps.masks[shortcut.key]
-    }
 
 @Composable
 private fun HitCell(
@@ -587,7 +580,7 @@ private fun StripCell(
         when {
             // Bare silhouettes and initials sit on a badge, as pinned apps do, so they read on any wallpaper.
             bare && (mono || bmp == null) ->
-                Box(Modifier.size(size).clip(LauncherStyle.shape(size / 2)).background(Palette.surface), contentAlignment = Alignment.Center) {
+                IconBadge(size) {
                     if (bmp != null) {
                         Image(bmp, spoken, Modifier.size(size * 0.75f), colorFilter = ColorFilter.tint(Palette.accent))
                     } else {
@@ -602,6 +595,7 @@ private fun StripCell(
 }
 
 /** The apps opened lately, last opened first; hidden ones and ones not installed (or not loaded yet) are skipped. */
+
 private fun recentApps(
     runtime: Runtime,
     limit: Int,
@@ -684,26 +678,7 @@ internal fun AppPanel(
                     ProfileTabs(tabs, tab, onPick = { state.tab = it })
                     Spacer(Modifier.weight(1f))
                 }
-                Box(
-                    Modifier
-                        .size(44.dp)
-                        .clip(LauncherStyle.shape(22.dp))
-                        .background(Palette.surface)
-                        .clickable(onClick = onSettings),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(Icons.Gear, "settings", Modifier.size(22.dp), colorFilter = ColorFilter.tint(Palette.accent))
-                    // Updates are waiting: settings › system updates lists them.
-                    if ((runtime.updates.pending?.count ?: 0) > 0) {
-                        Box(
-                            Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp)
-                                .size(8.dp)
-                                .background(Palette.red, CircleShape),
-                        )
-                    }
-                }
+                SettingsButton(runtime, onSettings)
             }
             // Only as tall as its rows, so taps above a short list reach the scrim behind and close the panel.
             Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.Bottom) {
@@ -779,6 +754,8 @@ internal fun AppPanel(
                                                         Box(Modifier.weight(1f)) { HitCell(runtime, hit, handlers, selected = i == selected) }
                                                     }
                                                     if (!PlusPrefs.drawerAlignRight) repeat(gaps) { Spacer(Modifier.weight(1f)) }
+
+
 
                                                 }
                                             }
@@ -985,16 +962,14 @@ private fun AppCell(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val mono = LauncherStyle.monochromeIcons
-        // Badges are circles when rounded, squares with Omarchy's sharp edges.
-        val badge = LauncherStyle.shape(26.dp)
         if (mono && mask != null) {
-            Box(Modifier.size(IconSize.dp).clip(badge).background(Palette.surface), contentAlignment = Alignment.Center) {
+            IconBadge(IconSize.dp) {
                 Image(mask, spoken, Modifier.size(36.dp * IconSize.scale), colorFilter = ColorFilter.tint(Palette.accent))
             }
         } else if (!mono && icon != null) {
             Image(icon, spoken, Modifier.size(IconSize.dp))
         } else {
-            Box(Modifier.size(IconSize.dp).clip(badge).background(Palette.surface), contentAlignment = Alignment.Center) {
+            IconBadge(IconSize.dp) {
                 BasicText(initials(label), style = Mono.copy(color = Palette.accent, fontSize = TextSize.Title))
             }
         }
@@ -1106,5 +1081,48 @@ private class MathParser(private val s: String) {
         while (pos < s.length && (s[pos].isDigit() || s[pos] == '.')) pos++
         if (start == pos) throw IllegalArgumentException("number expected")
         return s.substring(start, pos).toDouble()
+
     }
 }
+
+/** The settings gear, shared by the home menu and the drawer; shows a dot when updates are waiting. */
+@Composable
+internal fun SettingsButton(
+    runtime: Runtime,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(LauncherStyle.shape(22.dp))
+            .background(Palette.surface)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(Icons.Gear, "settings", Modifier.size(22.dp), colorFilter = ColorFilter.tint(Palette.accent))
+        // Updates are waiting: settings › system updates lists them.
+        if ((runtime.updates.pending?.count ?: 0) > 0) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(8.dp)
+                    .background(Palette.red, CircleShape),
+            )
+        }
+    }
+}
+
+/** Apps familiar enough to sketch home and the recent strip in style settings' preview. */
+internal fun familiarApps(
+    runtime: Runtime,
+    limit: Int,
+): List<AppHit> = (recentApps(runtime, limit) + allApps(runtime)).distinctBy { it.key }.take(limit)
+
+internal fun AppHit.icons(runtime: Runtime): Pair<ImageBitmap?, ImageBitmap?> =
+    when (this) {
+        is AppHit.Linux -> runtime.linuxIcons[app.id] to runtime.linuxMasks[app.id]
+        is AppHit.Owl -> runtime.owlIcon(spec, mono = false) to runtime.owlIcon(spec, mono = true)
+        is AppHit.Android -> runtime.androidApps.icons[app.key] to runtime.androidApps.masks[app.key]
+        is AppHit.Shortcut -> runtime.androidApps.icons[shortcut.key] to runtime.androidApps.masks[shortcut.key]
+    }

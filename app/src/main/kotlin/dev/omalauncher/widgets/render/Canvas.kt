@@ -34,12 +34,12 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
+import dev.omalauncher.ui.LauncherStyle
 import dev.omalauncher.ui.Palette
 import dev.omalauncher.widgets.lang.Builtins
 import dev.omalauncher.widgets.lang.Env
@@ -124,7 +124,7 @@ private class Painter(
                 is WNode.Draw -> draw(n, env)
                 is WNode.If -> paint(if (eval(n.cond, env).truthy) n.then else n.orElse, env)
                 is WNode.For -> {
-                    val list = items(eval(n.list, env))
+                    val list = Builtins.iterable(eval(n.list, env))
                     for (i in list.indices) paint(n.body, env.child(list[i], Num(i.toDouble())))
                 }
                 // Each let is computed once per draw, on first use.
@@ -234,7 +234,7 @@ private class Painter(
             }
             "line" -> drawLine(stroke ?: fill!!, Offset(v[0], v[1]), Offset(v[2], v[3]), width, cap)
             "path" -> {
-                val points = items(first).mapNotNull(::point)
+                val points = Builtins.iterable(first).mapNotNull(::point)
                 if (points.size < 2) return
                 val path = Path()
                 points.forEachIndexed { i, o -> if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y) }
@@ -252,7 +252,7 @@ private class Painter(
                         first.text(),
                         TextStyle(
                             color = color,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = LauncherStyle.font,
                             fontSize = (named["size"]?.num() ?: 13.0).sp,
                             fontWeight = if (named["bold"]?.truthy == true) FontWeight.Bold else null,
                         ),

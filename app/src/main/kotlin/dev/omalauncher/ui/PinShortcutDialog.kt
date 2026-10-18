@@ -2,8 +2,9 @@ package dev.omalauncher.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +15,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +41,7 @@ internal fun PinShortcutDialog(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             icon?.let { Image(it, label, Modifier.size(IconSize.dp)) }
                 ?: Box(Modifier.size(IconSize.dp).clip(LauncherStyle.shape(26.dp)).background(Palette.background), contentAlignment = Alignment.Center) {
+
                     BasicText(initials(label), style = Mono.copy(color = Palette.accent, fontSize = TextSize.Title))
                 }
             Column {

@@ -82,7 +82,7 @@ import dev.omalauncher.widgets.lang.Env
 import dev.omalauncher.widgets.lang.Lst
 import dev.omalauncher.widgets.lang.Null
 import dev.omalauncher.widgets.lang.Num
-import dev.omalauncher.widgets.lang.Obj
+import dev.omalauncher.ui.TerminalTiles
 import dev.omalauncher.widgets.lang.Str
 import dev.omalauncher.widgets.lang.Value
 import dev.omalauncher.widgets.lang.WNode
@@ -97,6 +97,9 @@ val LocalHomeCovered = staticCompositionLocalOf<() -> Boolean> { { false } }
 
 /** Whether an Input's `focus` may take focus: only on a screen the user opened, never on a tile or in a preview. */
 val LocalInputFocus = staticCompositionLocalOf { false }
+
+/** On home's tiles: an Input there that takes the keyboard tells these, so its tile lifts above it like a terminal's. */
+val LocalHomeTiles = staticCompositionLocalOf<TerminalTiles?> { null }
 
 /** The widget's content inside its tile: padding, optional background, and the node tree. */
 @Composable
@@ -197,7 +200,7 @@ private fun Node(
         }
         is WNode.For -> {
             val list by remember(node, env) { derivedStateOf(structuralEqualityPolicy()) { inst.eval(node.list, env, "for") } }
-            val items = items(list)
+            val items = Builtins.iterable(list)
             items.forEachIndexed { i, v ->
                 val k: Any = node.key?.let { inst.eval(it, env.child(v, Num(i.toDouble())), "for key") } ?: i
                 key(k) {
@@ -238,13 +241,6 @@ private fun Node(
         is WNode.Draw -> {} // only inside Canvas, which draws them itself
     }
 }
-
-internal fun items(v: Value): List<Value> =
-    when (v) {
-        is Lst -> v.items
-        is Obj -> v.fields.map { (k, x) -> Obj(mapOf("key" to Str(k), "value" to x)) }
-        else -> emptyList()
-    }.let { if (it.size > Builtins.MAX_LIST) it.subList(0, Builtins.MAX_LIST) else it } // take() would copy every list, every frame
 
 private val SIZING = setOf("width", "height", "size", "fill", "weight")
 
@@ -354,7 +350,7 @@ private fun Element(
             val thickness = p.float("thickness", 2f)
             Spacer(
                 mod.then(if (sized) Modifier else Modifier.fillMaxWidth().height(48.dp)).drawBehind {
-                    val points = items(p.now("values") ?: return@drawBehind).mapNotNull { it.num()?.toFloat() }
+                    val points = Builtins.iterable(p.now("values") ?: return@drawBehind).mapNotNull { it.num()?.toFloat() }
                     if (points.size < 2) return@drawBehind
                     val lo = p.now("min")?.num()?.toFloat() ?: 0f
                     // Auto-scaled lines get headroom so the peak isn't glued to the top edge.
@@ -605,7 +601,7 @@ private fun TextNode(
                     "sans" -> FontFamily.SansSerif
                     "serif" -> FontFamily.Serif
                     "icon" -> NerdSymbols
-                    else -> FontFamily.Monospace
+                    else -> LauncherStyle.font
                 },
             fontSize = p.observe("fontSize")?.num()?.sp ?: base.fontSize,
             fontWeight = if (p.observe("bold")?.truthy == true) FontWeight.Bold else null,
