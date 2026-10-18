@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.setValue
+import dev.omalauncher.ui.PlusPrefs
 import dev.omalauncher.upgrade.Versioned
 import dev.omalauncher.upgrade.mapEntries
 import org.json.JSONObject
@@ -188,6 +189,7 @@ class WidgetLayout(
         cols: Int,
         rows: Int,
     ): Cell? {
+        if (PlusPrefs.gridless) return Cell(0, 0, (item.size?.first ?: 1).coerceIn(1, cols), (item.size?.second ?: 1).coerceIn(1, rows))
         // Shortcuts always show as 1x1, whatever an old saved cell says.
         val others = items.mapNotNull { other -> if (other.key == item.key) null else cells[other.key]?.let { if (other.resizable) it else it.copy(w = 1, h = 1) } }
         val (pw, ph) = item.size ?: (cols / 2 to 3)
