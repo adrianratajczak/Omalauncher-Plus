@@ -511,13 +511,20 @@ internal fun HomeGrid(
                                     swapAim = target.first.key
                                     swapSince = now
                                 } else if (swapSince > 0L && now - swapSince > REORDER_MS) {
-                                    layout.cell(target.first.key)?.let { other ->
-                                        layout.set(target.first.key, cell)
-                                        layout.set(item.key, other)
-                                        if (page != from) {
-                                            onMove(target.first, from)
-                                            onMove(item, page)
+                                    val stillOthers = others.filter { it.first.key != target.first.key }
+                                    val safe = stillOthers.none { it.second.overlaps(target.second) || it.second.overlaps(cell) }
+                                    if (safe) {
+                                        layout.cell(target.first.key)?.let { other ->
+                                            layout.set(target.first.key, cell)
+                                            layout.set(item.key, other)
+                                            if (page != from) {
+                                                onMove(target.first, from)
+                                                onMove(item, page)
+                                            }
+                                            android.util.Log.d("WidgetDrag", "SWAP ${item.key} <-> ${target.first.key} page=$page")
                                         }
+                                    } else {
+                                        android.util.Log.d("WidgetDrag", "SKIP (overlap) ${item.key} vs ${target.first.key}")
                                     }
                                     swapSince = 0L
                                     swapAim = ""
