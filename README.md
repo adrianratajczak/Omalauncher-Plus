@@ -4,7 +4,7 @@
 
 **An Omarchy-style launcher on steroids.** A fork of
 [SimonSchubert/omalauncher](https://github.com/SimonSchubert/omalauncher)
-(upstream **0.7.2**) — everything upstream does, plus the whole list below.
+(upstream **0.8.1**) — everything upstream does, plus the whole list below.
 It installs **side by side** with the original (`dev.omalauncher.plus`).
 
 [![Download APK](https://img.shields.io/badge/Download-APK-7aa2f7?style=for-the-badge&logo=android)](https://github.com/adrianratajczak/Omalauncher-Plus/releases)
@@ -12,7 +12,7 @@ It installs **side by side** with the original (`dev.omalauncher.plus`).
 [![Project page](https://img.shields.io/badge/Project-page-bb9af7?style=for-the-badge)](omalauncher-plus.html)
 
 ![branch](https://img.shields.io/badge/branch-omalauncher--plus-7aa2f7)
-![upstream](https://img.shields.io/badge/upstream-0.7.2-565f89)
+![upstream](https://img.shields.io/badge/upstream-0.8.1-565f89)
 ![android](https://img.shields.io/badge/android-10%2B-9ece6a)
 ![license](https://img.shields.io/badge/license-MIT-565f89)
 
@@ -28,6 +28,12 @@ No root, no account, no ads. Releases are signed with a debug key —
 fine for sideloading. Requires arm64 + Android 10+.
 
 ## ✨ What's new in this fork
+
+### 🔗 Merged upstream 0.8.1
+This fork now tracks upstream **0.8.1**: home grid 4–9 columns, style preview,
+launcher/widget fonts, terminal font dropdown, widget tile lift, widget store updates
+in settings. All fork features below are preserved on top of it.
+
 
 ### 🌗 Day & night themes
 
