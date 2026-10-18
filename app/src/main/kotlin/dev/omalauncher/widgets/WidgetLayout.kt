@@ -51,6 +51,8 @@ class WidgetLayout(
 ) {
     private val prefs = context.getSharedPreferences("widget_grid", Context.MODE_PRIVATE)
     private val cells = mutableStateMapOf<String, Cell>()
+    /** Free positions (pixels) when gridless mode is on. */
+    private val free = mutableStateMapOf<String, androidx.compose.ui.geometry.Offset>()
     /** Read while compiling widgets, off the main thread. */
     private val pages = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
@@ -71,6 +73,7 @@ class WidgetLayout(
         val saved = columnsOf(data)
         data.optJSONObject("cells")?.mapEntries { _, c -> Cell(c.getInt("x"), c.getInt("y"), c.getInt("w"), c.getInt("h")).rescaled(saved, columns) }?.let(cells::putAll)
         data.optJSONObject("pages")?.let { p -> for (k in p.keys()) pages[k] = p.optInt(k, 1) }
+        data.optJSONObject("free")?.let { f -> for (k in f.keys()) free[k] = androidx.compose.ui.geometry.Offset(f.optJSONObject(k)?.optDouble("x")?.toFloat() ?: 0f, f.optJSONObject(k)?.optDouble("y")?.toFloat() ?: 0f) }
     }
 
     /**
@@ -206,6 +209,19 @@ class WidgetLayout(
     fun remove(name: String) {
         cells.remove(name)
         pages.remove(name)
+        free.remove(name)
+        save()
+    }
+
+    /** Free position (pixels) for [name] in gridless mode, if any. */
+    fun freePos(name: String): androidx.compose.ui.geometry.Offset? = free[name]
+
+    /** Stores a free position (pixels) for [name] in gridless mode. */
+    fun setFreePos(
+        name: String,
+        offset: androidx.compose.ui.geometry.Offset,
+    ) {
+        free[name] = offset
         save()
     }
 
@@ -233,11 +249,14 @@ class WidgetLayout(
     fun save() {
         val json = JSONObject()
         for ((name, c) in cells) json.put(name, JSONObject().put("x", c.x).put("y", c.y).put("w", c.w).put("h", c.h))
+        val freeJson = JSONObject()
+        for ((name, off) in free) freeJson.put(name, JSONObject().put("x", off.x.toDouble()).put("y", off.y.toDouble()))
         val data =
             JSONObject()
                 .put("columns", columns)
                 .put("cells", json)
                 .put("pages", JSONObject(pages as Map<*, *>))
+                .put("free", freeJson)
         prefs.edit().putString(LAYOUT, Versioned.write(VERSION, data)).apply()
     }
 

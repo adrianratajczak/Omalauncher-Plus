@@ -524,6 +524,7 @@ internal fun HomeGrid(
                                 }
                             drop != null && moved -> {
                                 layout.set(item.key, drop)
+                                if (PlusPrefs.gridless) layout.setFreePos(item.key, arrange.finger - (arrange.carry?.grab ?: Offset.Zero))
                                 if (page != from || inFolder) onMove(item, page)
                             }
                         }
@@ -811,14 +812,17 @@ private fun TiledPage(
         for (item in items) {
             // The carried tile is drawn above the pager instead.
             if (item.key == carried) continue
-            val cell = layout.cell(item.key)?.let { grid.fit(it, item) } ?: continue
-            val rect = grid.rect(cell)
+            val free = if (PlusPrefs.gridless) layout.freePos(item.key) else null
+            val cell = layout.cell(item.key)?.let { grid.fit(it, item) }
+            val rect = cell?.let { grid.rect(it) }
+            val sizeW = rect?.width ?: with(density) { (item.size?.first ?: 2) * 50 }
+            val sizeH = rect?.height ?: with(density) { (item.size?.second ?: 2) * 50 }
             androidx.compose.runtime.key(item.key) {
                 render(
                     item,
                     Modifier
-                        .offset { IntOffset(rect.left, rect.top) }
-                        .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() }),
+                        .offset { if (free != null) IntOffset(free.x.toInt(), free.y.toInt()) else IntOffset(rect?.left ?: 0, rect?.top ?: 0) }
+                        .size(with(density) { sizeW.toDp() }, with(density) { sizeH.toDp() }),
                     selected == item.key || arrange.swapWith == item.key,
                 )
             }
