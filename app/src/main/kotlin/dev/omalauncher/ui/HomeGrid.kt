@@ -515,8 +515,8 @@ internal fun HomeGrid(
                                     val safe = stillOthers.none { it.second.overlaps(target.second) || it.second.overlaps(cell) }
                                     if (safe) {
                                         layout.cell(target.first.key)?.let { other ->
-                                        layout.set(target.first.key, Cell(cell.x, cell.y, other.w, other.h))
-                                        layout.set(item.key, Cell(target.second.x, target.second.y, cell.w, cell.h))
+                                            layout.set(target.first.key, cell)
+                                            layout.set(item.key, other)
                                             if (page != from) {
                                                 onMove(target.first, from)
                                                 onMove(item, page)
