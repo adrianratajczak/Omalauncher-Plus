@@ -40,6 +40,10 @@ enum class SettingsPage {
     Linux,
     Licenses,
     Gestures,
+    Plus,
+    IconPacks,
+    IconSize,
+    Search,
 }
 
 /** Opens [page] over the ones in [stack]; one that's already open comes back to the top, closing what's over it. */
@@ -102,6 +106,7 @@ private fun SettingsPage(
                 onLinux = { stack.push(SettingsPage.Linux) },
                 onLicenses = { stack.push(SettingsPage.Licenses) },
                 onGestures = { stack.push(SettingsPage.Gestures) },
+                onPlus = { stack.push(SettingsPage.Plus) },
             )
         SettingsPage.Style -> StyleScreen(runtime, onDismiss = close, onBrowse = { stack.push(SettingsPage.Themes) })
         SettingsPage.Pages -> {
@@ -152,5 +157,16 @@ private fun SettingsPage(
         SettingsPage.Linux -> LinuxScreen(runtime, onDismiss = close)
         SettingsPage.Licenses -> LicensesScreen(onDismiss = close)
         SettingsPage.Gestures -> GesturesScreen(runtime, onDismiss = close)
+        SettingsPage.Plus ->
+            PlusScreen(
+                runtime,
+                onDismiss = close,
+                onIconPacks = { stack.push(SettingsPage.IconPacks) },
+                onIconSize = { stack.push(SettingsPage.IconSize) },
+                onSearch = { stack.push(SettingsPage.Search) },
+            )
+        SettingsPage.IconPacks -> IconPackScreen(runtime, onDismiss = close)
+        SettingsPage.IconSize -> IconSizeScreen(runtime, onDismiss = close)
+        SettingsPage.Search -> SearchSettingsScreen(onDismiss = close)
     }
 }
