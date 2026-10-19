@@ -62,7 +62,7 @@ fun ShortcutTile(
             .padding(4.dp),
     ) {
         val showLabel = showsLabel()
-        val iconSize = tileIconSize(showLabel)
+        val iconSize = tileIconSize(showLabel) * IconSize.scale
         Column(
             Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
