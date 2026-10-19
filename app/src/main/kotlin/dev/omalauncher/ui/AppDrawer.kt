@@ -618,6 +618,10 @@ internal fun AppPanel(
     handlers: AppHandlers,
     /** Asks the default agent with the bar's text. */
     onAsk: () -> Unit,
+    /** The bar's text on the web, in the default browser. */
+    onWeb: (String) -> Unit,
+    /** The bar's text in the app store. */
+    onStore: (String) -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -804,7 +808,11 @@ internal fun AppPanel(
                     }
                 }
                 if (query.isNotBlank()) {
-                    // The agent needs no row: Enter in the bar asks it.
+                    // The agent needs no row: Enter in the bar asks it. The store sits over the web, the web over the bar.
+                    Column(Modifier.padding(bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ActionRow("search store", highlighted == -1, onClick = { onStore(query) })
+                        ActionRow("search web", highlighted == -2, onClick = { onWeb(query) })
+                    }
                 }
                 if (calcResult != null) {
                     Box(Modifier.fillMaxSize()) {

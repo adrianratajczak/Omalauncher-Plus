@@ -232,6 +232,8 @@ private fun DesktopScreen(
                         highlighted = highlighted,
                         handlers = handlers,
                         onAsk = { state.promptRequest = PromptRequest.Send },
+                        onWeb = ::searchWeb,
+                        onStore = ::searchStore,
                         onSettings = { state.show() },
                         modifier =
                             Modifier.graphicsLayer {
