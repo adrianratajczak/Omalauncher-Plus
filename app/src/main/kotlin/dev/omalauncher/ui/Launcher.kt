@@ -28,6 +28,8 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -124,6 +126,29 @@ private fun DesktopScreen(
     LaunchedEffect(panelShown) { if (!panelShown) state.query = "" }
     val search by remember(runtime, state) { derivedStateOf { searchApps(runtime, state.query) } }
     val highlighted = search.highlighted(state.picked)
+
+    /** Opens [url] in the default browser; false when nothing opens it. */
+    fun openUrl(url: String) = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.isSuccess
+
+    /** Leaves the drawer behind, like opening an app does. */
+    fun leavePanel() {
+        state.query = ""
+        state.closeNow()
+    }
+
+    /** The bar's text on the web, in the default browser. */
+    fun searchWeb(query: String) {
+        if (query.isBlank()) return
+        leavePanel()
+        openUrl(Search.webUrl(query))
+    }
+
+    /** The bar's text in the app store: the Play app, its site without it, or F-Droid's site. */
+    fun searchStore(query: String) {
+        if (query.isBlank()) return
+        leavePanel()
+        if (Search.store != Search.Store.Play || !openUrl(Search.storeUrl(query))) openUrl(Search.storeWebUrl(query))
+    }
 
     fun launch(hit: AppHit) {
         state.query = ""
@@ -225,7 +250,7 @@ private fun DesktopScreen(
                     // Swiping up from either does what it does on home, as from the dock on stock launchers.
                     if (LauncherStyle.recentApps && !panelShown) RecentStrip(runtime, handlers, Modifier.homeSwipe(runtime, state))
                     // Insets itself by the grid gap, so it lines up with the tiles and the gap still takes taps.
-                    PromptBar(runtime, state, search = search, highlighted = highlighted, onLaunch = handlers.launch, modifier = Modifier.homeSwipe(runtime, state))
+                    PromptBar(runtime, state, search = search, highlighted = highlighted, onLaunch = handlers.launch, onWeb = ::searchWeb, onStore = ::searchStore, modifier = Modifier.homeSwipe(runtime, state))
                 }
             }
         }
