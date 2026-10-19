@@ -80,7 +80,7 @@ object Builtins {
     val constants = mapOf("pi" to Num(PI), "transparent" to Col(null, 0))
 
     /** Handler-only calls; they reach [Host.act]. */
-    val actions = mapOf("terminal" to 1..2, "app" to 1..1, "run" to 1..1, "post" to 1..3, "url" to 1..1, "launcher" to 1..1, "refresh" to 0..1, "media" to 1..1, "androidApp" to 1..1, "copy" to 1..1, "notify" to 1..2, "volume" to 1..1, "notification" to 2..2, "screen" to 0..0, "close" to 0..0, "torch" to 1..1, "share" to 1..1, "haptic" to 0..0, "sound" to 1..1)
+    val actions = mapOf("terminal" to 1..2, "app" to 1..1, "run" to 1..1, "post" to 1..3, "url" to 1..1, "launcher" to 1..1, "refresh" to 0..1, "media" to 1..1, "androidApp" to 1..1, "copy" to 1..1, "notify" to 1..2, "volume" to 1..1, "notification" to 2..2, "screen" to 0..0, "close" to 0..0, "torch" to 1..1, "share" to 1..1, "haptic" to 0..0, "sound" to 1..1, "open" to 1..1, "ask" to 1..2)
 
     private fun lst(items: List<Value>) = Lst(capped(items))
 
@@ -430,6 +430,18 @@ object Builtins {
         digits: Int,
     ) = String.format(Locale.ROOT, "%.${digits.coerceIn(0, 10)}f", x)
 
+    // From 2^52 up a double has no fraction left to round, and roundToLong would
+    // stop at Long.MAX_VALUE: round(999998000001, 8) gave 92233720368.54776.
+    // NaN, also from 0 scaled by an infinite 10^digits, stays NaN.
+    private fun roundTo(
+        x: Double,
+        digits: Int,
+    ): Double {
+        val p = Math.pow(10.0, digits.toDouble())
+        val v = x * p
+        return if (v.isNaN()) Double.NaN else if (Math.abs(v) >= 4503599627370496.0) x else v.roundToLong() / p
+    }
+
     fun interface Num1 {
         fun of(x: Double): Double
     }
@@ -470,7 +482,7 @@ object Builtins {
             "asin" to Num1 { Math.asin(it) },
             "acos" to Num1 { Math.acos(it) },
             // NaN can't round: the general path reports it.
-            "round" to Num1 { if (it.isNaN()) Double.NaN else it.roundToLong().toDouble() },
+            "round" to Num1 { roundTo(it, 0) },
         )
 
     val numeric2: Map<String, Num2> =
@@ -479,11 +491,7 @@ object Builtins {
             "pow" to Num2 { x, y -> if (x.isNaN() || y.isNaN()) Double.NaN else Math.pow(x, y) },
             "atan2" to Num2 { x, y -> Math.atan2(x, y) },
             "round" to
-                Num2 { x, d ->
-                    val p = Math.pow(10.0, d.toInt().toDouble())
-                    val v = x * p
-                    if (v.isNaN() || d.isNaN()) Double.NaN else v.roundToLong() / p
-                },
+                Num2 { x, d -> if (x.isNaN() || d.isNaN()) Double.NaN else roundTo(x, d.toInt()) },
         )
 
     val numeric3: Map<String, Num3> =
@@ -500,11 +508,7 @@ object Builtins {
             "clamp" to Builtin(3, 3) { a -> n(a.num(0).coerceIn(a.num(1), a.num(2).coerceAtLeast(a.num(1)))) },
             "lerp" to Builtin(3, 3) { a -> n(a.num(0) + (a.num(1) - a.num(0)) * a.num(2)) },
             "round" to
-                Builtin(1, 2) { a ->
-                    val d = a.int(1, 0)
-                    val p = Math.pow(10.0, d.toDouble())
-                    n((a.num(0) * p).roundToLong() / p)
-                }.strict(),
+                Builtin(1, 2) { a -> n(roundTo(a.num(0), a.int(1, 0)).also { require(!it.isNaN()) { "Cannot round NaN value." } }) }.strict(),
             "floor" to math(::floor),
             "ceil" to math(Math::ceil),
             "abs" to math(Math::abs),

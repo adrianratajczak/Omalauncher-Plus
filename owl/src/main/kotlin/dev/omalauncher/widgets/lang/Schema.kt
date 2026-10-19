@@ -26,7 +26,7 @@ internal val KINDS: Map<String, Kind> =
         "Flow" to Kind(setOf("gap", "align", "justify"), Children.UI),
         "Box" to Kind(setOf("align"), Children.UI),
         "Grid" to Kind(setOf("columns", "gap"), Children.UI),
-        "Text" to Kind(setOf("text", "style", "color", "fontSize", "bold", "italic", "font", "align", "maxLines"), Children.NONE),
+        "Text" to Kind(setOf("text", "style", "color", "fontSize", "bold", "italic", "font", "align", "maxLines", "spans", "fontWeight", "letterSpacing"), Children.NONE),
         "Image" to Kind(setOf("src", "fit", "tint"), Children.NONE),
         "Button" to Kind(setOf("text", "color"), Children.NONE),
         "Progress" to Kind(setOf("value", "max", "color", "track"), Children.NONE),
@@ -39,13 +39,15 @@ internal val KINDS: Map<String, Kind> =
         "Terminal" to Kind(setOf("command", "fontSize"), Children.NONE),
         // owl 4: input.
         "Slider" to Kind(setOf("value", "min", "max", "step", "color", "track", "live"), Children.NONE),
-        "Input" to Kind(setOf("text", "placeholder", "color", "fontSize", "clear", "focus"), Children.NONE),
+        "Input" to Kind(setOf("text", "placeholder", "color", "fontSize", "clear", "focus", "underline"), Children.NONE),
+        // owl 10: a menu over everything else, next to the node that holds it.
+        "Popup" to Kind(setOf("position", "gap", "align"), Children.UI),
     )
 
 internal val COMMON =
     setOf(
         "width", "height", "size", "fill", "weight", "padding", "background", "border", "borderColor",
-        "radius", "opacity", "rotation", "scale", "offset", "clip", "visible",
+        "radius", "opacity", "rotation", "scale", "offset", "clip", "visible", "frost",
     )
 
 internal val ANIMATABLE = setOf("opacity", "rotation", "scale", "value", "color", "background")
@@ -60,7 +62,11 @@ internal val ENUMS =
         "font" to setOf("mono", "sans", "serif", "icon"),
         "fill" to setOf("width", "height"),
         "cap" to setOf("round", "butt", "square"),
+        "position" to setOf("above", "below"),
     )
+
+/** text(...)'s options beyond size, color, align and bold, as Text has them (owl 10). */
+internal val TEXT_STYLE = setOf("font", "fontWeight", "italic", "letterSpacing")
 
 /** Canvas calls: positional arity, and whether they take a { } body of further calls. */
 internal val DRAW: Map<String, DrawOp> =
@@ -80,7 +86,7 @@ internal val DRAW: Map<String, DrawOp> =
         // owl 3: pixel art from rows of letters, one color per letter.
         "sprite" to DrawOp(4..4),
     )
-internal val DRAW_NAMED = setOf("fill", "stroke", "width", "cap", "radius", "closed", "size", "color", "align", "bold", "palette")
+internal val DRAW_NAMED = setOf("fill", "stroke", "width", "cap", "radius", "closed", "size", "color", "align", "bold", "palette") + TEXT_STYLE
 
 /** What needs a newer language than 1, with the version: using one without `meta { owl: N }` is an error. */
 internal val SINCE =
@@ -99,7 +105,23 @@ internal val SINCE =
         // owl 9: lists and maps changed in place of rebuilding them; a trigger for a first value.
         listOf("set", "remove", "merge", "reduce", "scan", "groupBy", "toJson", "capitalize", "asin", "acos", FLATTEN_DEPTH, ON_FIRST).associateWith { 9 } +
         // owl 9: handlers that choose, and name values on the way.
-        listOf(HANDLER_IF, HANDLER_LET).associateWith { 9 }
+        listOf(HANDLER_IF, HANDLER_LET).associateWith { 9 } +
+        // owl 10: faces, files that are a whole home page; long-press where it isn't the home screen's.
+        mapOf(FACE_FILE to 10, "onLongPress" to 10) +
+        // owl 10: text styled in pieces, by weight and spacing; gradients and frosted glass behind any node; Text in a Row as wide as its text.
+        listOf("Text.spans", "Text.fontWeight", "Text.letterSpacing", GRADIENT_BACKGROUND, "frost").associateWith { 10 } +
+        // owl 10: the coding agents in Linux and the recent strip's apps, for a face with its own prompt bar.
+        listOf("android.agents", "android.recent", "open", "ask", "Popup", "Input.underline").associateWith { 10 } +
+        // owl 10: fonts of the widget's own, and Canvas text styled like a Text.
+        listOf(FONT_FILE, CANVAS_TEXT_STYLE).associateWith { 10 }
+
+internal const val FACE_FILE = "face \"…\" { }"
+
+internal const val GRADIENT_BACKGROUND = "a gradient background"
+
+internal const val FONT_FILE = "a font of its own"
+
+internal const val CANVAS_TEXT_STYLE = "text(...) with font, fontWeight, italic or letterSpacing"
 
 internal const val WEB_IMAGE = "an image from the web"
 
@@ -120,18 +142,25 @@ internal const val HANDLER_LET = "let in a handler"
  */
 internal val MANAGERS = mapOf("pacman" to Regex("[a-z0-9@_+][a-z0-9@._+-]*"))
 
-// No onLongPress: long-press belongs to the home screen, which lifts the tile to move it.
+// onLongPress only off the home grid: on a tile, long-press belongs to the home screen, which lifts the tile to move it.
 internal val HANDLER_PARAMS =
-    mapOf("onTap" to listOf("x", "y"), "onDrag" to listOf("dx", "dy", "x", "y"), "onChange" to listOf("value"), "onSubmit" to listOf("value"))
+    mapOf(
+        "onTap" to listOf("x", "y"),
+        "onLongPress" to listOf("x", "y"),
+        "onDrag" to listOf("dx", "dy", "x", "y"),
+        "onChange" to listOf("value"),
+        "onSubmit" to listOf("value"),
+        "onDismiss" to emptyList(),
+    )
 
 /** Handlers only some nodes have. */
-internal val HANDLER_KINDS = mapOf("onChange" to setOf("Slider", "Input"), "onSubmit" to setOf("Input"))
+internal val HANDLER_KINDS = mapOf("onChange" to setOf("Slider", "Input"), "onSubmit" to setOf("Input"), "onDismiss" to setOf("Popup"))
 
 /** What triggers bind in their statements. */
 internal val TRIGGER_PARAMS = mapOf("on" to listOf("value", "old"))
 
-/** Data only Android has; battery, media, notifications, volume, alarm and modes update as they change, device is fixed, system and apps are polled. */
-internal val ANDROID = setOf("battery", "device", "media", "notifications", "volume", "system", "alarm", "modes", "apps")
+/** Data from the phone and the launcher; device is fixed, system is polled, the rest update as they change. */
+internal val ANDROID = setOf("battery", "device", "media", "notifications", "volume", "system", "alarm", "modes", "apps", "agents", "recent")
 
 /** The words an action's first value may be, when it's written out; [numbers] also allows a number. */
 internal class Words(
@@ -157,3 +186,6 @@ internal val TILE = setOf("cols", "rows", "tileWidth", "tileHeight", "screenWidt
 internal val NUMBERS = setOf("int", "round", "floor", "ceil", "abs", "fixed", "len", "count", "sum", "min", "max", "clamp")
 
 internal val WIDGET_PROPS = setOf("size", "minSize", "page", "order", "padding", "background")
+
+/** A face has no tile's size; it says where it goes and whether the status bar stays over it. */
+internal val FACE_PROPS = setOf("page", "order", "padding", "background", "statusBar")

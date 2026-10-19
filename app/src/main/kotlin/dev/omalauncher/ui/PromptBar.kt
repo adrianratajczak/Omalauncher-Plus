@@ -99,13 +99,9 @@ internal fun PromptBar(
     runtime: Runtime,
     state: LauncherState,
     search: BarSearch,
-    /** What Enter acts on: an index into the search hits, -2 the web, -1 the store, -3 the agent. */
+    /** What Enter acts on: an index into the search hits, or -1 for the agent. */
     highlighted: Int,
     onLaunch: (AppHit) -> Unit,
-    /** The bar's text on the web, in the default browser. */
-    onWeb: (String) -> Unit,
-    /** The bar's text in the app store. */
-    onStore: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -148,22 +144,16 @@ internal fun PromptBar(
         state.closeNow()
     }
 
-    /** Enter: the highlighted app, the web, the store, or the agent. */
+    /** Enter: the highlighted app, or the agent. */
     fun submit() {
-        when (highlighted) {
-            -2 -> onWeb(text)
-            -1 -> onStore(text)
-            else -> {
-                val hit = search.hits.getOrNull(highlighted)
-                if (hit != null) onLaunch(hit) else send(text)
-            }
-        }
+        val hit = search.hits.getOrNull(highlighted)
+        if (hit != null) onLaunch(hit) else send(text)
     }
 
-    /** Moves the highlight up the panel (away from the bar) or back down; the store, the web and the agent's ask sit below the apps, the ask lowest in the bar. */
+    /** Moves the highlight up the panel (away from the bar) or back down; the ask row sits lowest. */
     fun pick(step: Int) {
         if (text.isBlank()) return
-        state.picked = (highlighted + step).coerceIn(-3, search.hits.lastIndex)
+        state.picked = (highlighted + step).coerceIn(-1, search.hits.lastIndex)
     }
 
     /** Whether a finished recognition sends (hold-to-talk) or lands in the field for editing. */
@@ -212,8 +202,6 @@ internal fun PromptBar(
     LaunchedEffect(panelShown) {
         // Opened to dictate, the keyboard stays down.
         if (panelShown && !speech.listening) {
-            // The keyboard resizing mid-animation is the visible hitch: let the drawer settle first.
-            kotlinx.coroutines.delay(180)
             focus.requestFocus()
             keyboard?.show()
         } else if (!panelShown && focused) {
@@ -326,12 +314,7 @@ internal fun PromptBar(
                     // Says what Enter does, so opening an app instead of asking is never a surprise.
                     Box(
                         Modifier.clickable(onClick = ::submit).padding(horizontal = 10.dp, vertical = 12.dp),
-                    ) { BasicText(when {
-                        highlighted >= 0 -> "▸ open"
-                        highlighted == -2 -> "⌕ web"
-                        highlighted == -1 -> "⌕ store"
-                        else -> "⏎ ask"
-                    }, style = Mono.copy(color = Palette.accent)) }
+                    ) { BasicText(if (highlighted >= 0) "▸ open" else "⏎ ask", style = Mono.copy(color = Palette.accent)) }
                 }
                 MicButton(
                     listening = listening,

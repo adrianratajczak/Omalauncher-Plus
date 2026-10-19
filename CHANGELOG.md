@@ -4,6 +4,26 @@ The most important changes in each release. The Play Store notes for a release
 are in `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`.
 Dates are when the build was uploaded to Play.
 
+## 0.9.0 (versionCode 17) – 2026-10-18
+
+- Faces: an owl file can be a whole home screen (`face "name" { }`, owl 10), left of
+  page 1 like a stock launcher's feed, as many as you like, with an empty one
+  inviting the next. The store has a faces tab (minimal, pixel, terminal); settings ›
+  pages lists faces and tile pages to drag into order, edit or remove. A face can
+  hide the status bar, runs under the navigation bar with `screenInset`, and takes
+  both halves of an unfolded foldable.
+- Owl 10: text `spans`, `fontWeight`, `letterSpacing`, linear and radial gradient
+  backgrounds, `frost` (frosted glass over the wallpaper), fonts of a widget's own
+  (asset, URL or Linux file), styled Canvas text, `Popup`, Input `underline: false`,
+  `onLongPress`, `android.agents`, `android.recent`, `open(key)`, `ask(text)` and
+  Image `icon:<key>`. A Text in a Row or Flow is as wide as its text. `android.apps`
+  updates as apps change instead of being polled.
+- Example widgets: the start page is redesigned; the ai bar rebuilds the prompt bar
+  and recent strip in owl.
+- Fixes: sharing a face or an app to the store; dragging pages in settings; a NaN
+  font size, a damaged font file or `cmd("/")` no longer crash the launcher;
+  `round()` of very large numbers.
+
 ## 0.8.1 (versionCode 16) – 2026-10-17
 
 - Home's grid has 4 to 9 columns (6 by default); changing it moves every tile onto

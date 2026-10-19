@@ -67,7 +67,7 @@ fun IconPackScreen(
                     picked = chosen == null,
                     onPick = {
                         packs.choose(null)
-                        runtime.androidApps.redrawIcons()
+                        runtime.androidApps.refreshIcons()
                     },
                 )
             }
@@ -83,7 +83,7 @@ fun IconPackScreen(
                     picked = chosen?.packageName == pack.packageName,
                     onPick = {
                         packs.choose(pack)
-                        runtime.androidApps.redrawIcons()
+                        runtime.androidApps.refreshIcons()
                     },
                 )
             }

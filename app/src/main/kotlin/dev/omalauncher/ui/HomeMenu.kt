@@ -77,10 +77,16 @@ fun HomeMenu(
                 BasicText("create with $agentName", style = Mono.copy(fontSize = TextSize.Item))
                 // Pulled left by the buttons' own padding, so the first bracket lines up with the label.
                 Row(Modifier.offset(x = (-8).dp)) {
-                    for ((kind, label) in listOf(OwlKind.Widget to "widget", OwlKind.App to "app")) {
+                    val kinds: List<Pair<String, (String) -> String>> =
+                        listOf(
+                            "widget" to { newOwlCommand(it, OwlKind.Widget) },
+                            // Faces are made from the empty page left of them, which says where the new one goes.
+                            "app" to { newOwlCommand(it, OwlKind.App) },
+                        )
+                    for ((label, command) in kinds) {
                         BracketAction(label, Palette.accent) {
                             state.homeMenuOpen = false
-                            if (linux) state.withAgent(runtime, "New ${kind.word}") { newOwlCommand(it, kind) } else state.show(SettingsPage.Linux)
+                            if (linux) state.withAgent(runtime, "New $label", command) else state.show(SettingsPage.Linux)
                         }
                     }
                 }
@@ -103,11 +109,7 @@ fun HomeMenu(
                     state.homeMenuOpen = false
                     state.show(SettingsPage.Themes)
                 },
-            ) }
-        MenuItem("settings") {
-            state.homeMenuOpen = false
-            state.show(SettingsPage.Settings)
-
+            )
         }
     }
 }

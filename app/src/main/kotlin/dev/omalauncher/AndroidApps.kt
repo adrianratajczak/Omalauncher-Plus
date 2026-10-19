@@ -18,7 +18,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
-import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Process
@@ -36,9 +35,6 @@ import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.PathParser
 import dev.omalauncher.ui.IconPackStore
-import dev.omalauncher.ui.IconSize
-import dev.omalauncher.ui.PlusPrefs
-import dev.omalauncher.ui.finishIcon
 import dev.omalauncher.ui.iconMask
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -171,7 +167,7 @@ fun pinnedIds(
 class AndroidAppCatalog(
     private val context: Context,
     /** The icons an icon pack replaces the apps' own with; see [IconPackStore]. */
-    private val iconPacks: IconPackStore,
+    private val iconPacks: IconPackStore? = null,
 ) {
     val apps = mutableStateListOf<AndroidApp>()
 
@@ -231,11 +227,8 @@ class AndroidAppCatalog(
     var listsShortcuts by mutableStateOf(false)
         private set
 
-    /** Icon edge in px: the drawer's icon slot at this screen's density and the chosen icon size. */
-    private val iconPx get() = (52 * context.resources.displayMetrics.density * IconSize.scale).toInt().coerceAtLeast(24)
-
-    /** What each app's or shortcut's icon is drawn from, so a newly chosen icon pack can draw them again. */
-    private var sources = mapOf<String, IconSource>()
+    /** Icon edge in px: the drawer's 52dp icon at this screen's density. */
+    private val iconPx = (52 * context.resources.displayMetrics.density).toInt().coerceAtLeast(48)
 
     fun start() {
         launcherApps.registerCallback(
@@ -555,24 +548,13 @@ class AndroidAppCatalog(
                 val present = (list.map { it.key } + pinned.map { it.key }).toHashSet()
                 icons.keys.retainAll(present)
                 masks.keys.retainAll(present)
-                val newSources = mutableMapOf<String, IconSource>()
                 for ((info, app) in infos) {
-                    // A tile whose activity is gone opens the app's current one (see pinned), so the icon is the app's own.
-                    val source = IconSource(app.key, app.profile, app.clone) { iconPacks.iconFor(app.component) ?: info.getIcon(0) }
-                    newSources[app.key] = source
-                    if (app.key !in icons) loadIcon(source)
+                    if (app.key !in icons) loadIcon(app.key, app.profile, app.clone) { iconPacks?.iconFor(app.component) ?: info.getIcon(0) }
                 }
                 // Apps change a shortcut's icon without an update, so these are drawn again each time; there are only a few.
                 for ((info, shortcut) in made) {
-                    // A paused profile's shortcut (info == null) has no icon to draw; it keeps the one it has.
-                    val source =
-                        IconSource(shortcut.key, shortcut.profile, shortcut.clone) {
-                            if (info == null) null else launcherApps.getShortcutIconDrawable(info, context.resources.displayMetrics.densityDpi)
-                        }
-                    newSources[shortcut.key] = source
-                    if (info != null) loadIcon(source)
+                    if (info != null) loadIcon(shortcut.key, shortcut.profile, shortcut.clone) { launcherApps.getShortcutIconDrawable(info, context.resources.displayMetrics.densityDpi) }
                 }
-                sources = newSources
             }
     }
 
@@ -580,6 +562,9 @@ class AndroidAppCatalog(
      * Lists [packageName]'s pinned shortcuts in [user]'s profile again, and draws only their icons: apps such as chat apps
      * change their shortcuts often, and a full [reload] would list every app in every profile each time.
      */
+    /** Redraws every app icon, for an icon pack change. */
+    fun refreshIcons() { icons.clear(); masks.clear(); reload() }
+
     private fun reloadShortcuts(
         packageName: String,
         user: UserHandle,
@@ -602,11 +587,7 @@ class AndroidAppCatalog(
             val gone = icons.keys.filterTo(HashSet()) { it.startsWith("$packageName/#") && it !in present }
             icons.keys.removeAll(gone)
             masks.keys.removeAll(gone)
-            for ((info, shortcut) in made) {
-                val source = IconSource(shortcut.key, shortcut.profile, shortcut.clone) { launcherApps.getShortcutIconDrawable(info, context.resources.displayMetrics.densityDpi) }
-                sources = sources + (shortcut.key to source)
-                loadIcon(source)
-            }
+            for ((info, shortcut) in made) loadIcon(shortcut.key, shortcut.profile, shortcut.clone) { launcherApps.getShortcutIconDrawable(info, context.resources.displayMetrics.densityDpi) }
         }
     }
 
@@ -638,28 +619,6 @@ class AndroidAppCatalog(
         }
     }
 
-    private fun CoroutineScope.loadIcon(source: IconSource) = loadIcon(source.key, source.profile, source.clone, source.drawable)
-
-    /** What an app's or shortcut's icon is drawn from, so a newly chosen icon pack can draw it again. */
-    private class IconSource(
-        val key: String,
-        val profile: Long?,
-        val clone: Boolean,
-        val drawable: () -> Drawable?,
-    )
-
-    /**
-     * Draws every icon again from the same drawable functions, now with the chosen icon pack's icons where it has
-     * them; the app list stays. Called when a pack is picked, or the one chosen was uninstalled.
-     */
-    fun redrawIcons() {
-        icons.clear()
-        masks.clear()
-        scope.launch {
-            for (source in sources.values.toList()) loadIcon(source)
-        }
-    }
-
     /** [d] at the drawer's size and its silhouette; from another [profile], marked as [addBadge] does, with the clone mark for a [clone]. */
     private fun render(
         d: Drawable,
@@ -667,17 +626,11 @@ class AndroidAppCatalog(
         clone: Boolean,
     ): Pair<ImageBitmap, ImageBitmap> {
         val bmp = Bitmap.createBitmap(iconPx, iconPx, Bitmap.Config.ARGB_8888)
-        // Plus can strip the adaptive backdrop: the logo layer fills the bitmap, as the silhouette does.
-        val drawn = if (!PlusPrefs.adaptiveBackground) (d as? AdaptiveIconDrawable)?.foreground ?: d else d
-        val inset = if (drawn !== d) iconPx / 4 else 0
-        drawn.setBounds(-inset, -inset, iconPx + inset, iconPx + inset)
-        drawn.draw(Canvas(bmp))
+        d.setBounds(0, 0, iconPx, iconPx)
+        d.draw(Canvas(bmp))
         var mask = iconMask(d, iconPx)
         if (profile != null) mask = addBadge(bmp, mask, if (clone) cloneMark else briefcase)
-        // Plus shapes, grayscales and tints the icon after its badge; the silhouette stays as drawn.
-        val (top, bottom) = PlusPrefs.resolvedTints()
-        val finished = finishIcon(bmp, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, top, bottom)
-        return finished.asImageBitmap() to mask.asImageBitmap()
+        return bmp.asImageBitmap() to mask.asImageBitmap()
     }
 
     /**

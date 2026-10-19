@@ -9,8 +9,6 @@ import android.net.Uri
 import android.util.Log
 import android.view.KeyEvent
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -26,8 +24,6 @@ import dev.omalauncher.linux.EDIT_COMMAND
 import dev.omalauncher.linux.FILES_COMMAND
 import dev.omalauncher.linux.Gpu
 import dev.omalauncher.linux.LinuxApp
-import dev.omalauncher.linux.loadLinuxApps
-import dev.omalauncher.linux.resolveLinuxIcon
 import dev.omalauncher.linux.OpenBridge
 import dev.omalauncher.linux.Pacman
 import dev.omalauncher.linux.Proot
@@ -43,19 +39,14 @@ import dev.omalauncher.theme.Style
 import dev.omalauncher.theme.StyleStore
 import dev.omalauncher.theme.ThemeStore
 import dev.omalauncher.ui.Gestures
-import dev.omalauncher.ui.IconPackStore
-import dev.omalauncher.ui.IconSize
-import dev.omalauncher.ui.PlusPrefs
-import dev.omalauncher.ui.Search
-import dev.omalauncher.ui.TintSource
-import dev.omalauncher.ui.finishIcon
 import dev.omalauncher.ui.KeyboardBridge
 import dev.omalauncher.ui.SettingsPage
 import dev.omalauncher.ui.TerminalTiles
 import dev.omalauncher.ui.WindowManager
 import dev.omalauncher.ui.bitmapMask
-import dev.omalauncher.ui.decodeIcon
+import dev.omalauncher.ui.IconPackStore
 import dev.omalauncher.ui.Palette
+import dev.omalauncher.ui.PlusPrefs
 import dev.omalauncher.ui.decodeImageIcon
 import dev.omalauncher.ui.decodeSvgIcon
 import dev.omalauncher.upgrade.Provisioner
@@ -68,10 +59,10 @@ import dev.omalauncher.widgets.WidgetEngine
 import dev.omalauncher.widgets.WidgetSpec
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -96,18 +87,8 @@ class Runtime(
     val gestures = Gestures(context)
     /** The icon packs on the phone and the chosen one, which replaces the apps' own icons. */
     val iconPacks = IconPackStore(context)
-    val linuxApps = mutableStateListOf<LinuxApp>()
-
-    /** Icons of [linuxApps] by desktop id; apps without a PNG icon have no entry. */
-    val linuxIcons = mutableStateMapOf<String, ImageBitmap>()
-
-    /** Silhouettes of [linuxIcons] for the monochrome icon style. */
-    val linuxMasks = mutableStateMapOf<String, ImageBitmap>()
-
-    /** The Icon= each of [linuxIcons] was loaded from, to notice an entry changing it. */
-    private val linuxIconNames = HashMap<String, String>()
+    val linuxApps = LinuxAppCatalog(context, proot)
     val androidApps = AndroidAppCatalog(context, iconPacks)
-
     val usage = AppUsage(context)
     val themes = ThemeStore(context, proot, style, isLinux = { linux }, onConfigChanged = ::syncGuest)
     private val audio = AudioBridge(proot)
@@ -163,8 +144,6 @@ class Runtime(
         // Saved, so removing Linux later doesn't bring the first-run screen back.
         if (launcherReady) prefs.edit().putBoolean(SETUP_DONE, true).apply()
         themes.loadPalette()
-        // A theme tint follows the accent: redraw the icons once its colors land, on every path that shows one.
-        themes.onApplied = { if (PlusPrefs.tintSource == TintSource.Theme) redrawAllIcons() }
         // An agent or the user edited style.toml; the rest of the style is read where it's drawn.
         style.onExternalChange = { old, new ->
             val changed = new.changed(old)
@@ -178,7 +157,6 @@ class Runtime(
             snapshotFlow { style.style[Style.FONT] }.drop(1).collect { launcherFont.apply() }
         }
         androidApps.start()
-        startDayNight()
         // Omarchy's Super bindings inside Linux windows; the home screen handles its own (see MainActivity).
         keyboard.onShortcut = { code ->
             when (code) {
@@ -218,10 +196,6 @@ class Runtime(
             withContext(Dispatchers.IO) {
                 launcherFiles.sync()
                 agents.load()
-                iconPacks.refresh()
-                IconSize.load(context)
-                PlusPrefs.load(context)
-                Search.load(context)
             }
             themes.load()
             style.start()
@@ -239,12 +213,40 @@ class Runtime(
         scope.launch { themes.ensureRelease() }
     }
 
-    /**
-     * Reloads the icon packs on the phone and applies the saved one again, as home shows: a pack installed or
-     * uninstalled meanwhile needs a redraw (the apps' own icons come back, which takes a moment).
-     */
+    /** Redraws icons after an icon pack change. */
     fun reloadIconPacks() {
-        if (iconPacks.refresh()) androidApps.redrawIcons()
+        if (iconPacks.refresh()) androidApps.refreshIcons()
+    }
+
+    fun syncDayNight() {
+        scope.launch {
+            val want = PlusPrefs.wantedTheme() ?: return@launch
+            if (themes.picked == want) return@launch
+            themes.themes.firstOrNull { it.name == want }?.let { themes.apply(it) }
+                ?: themes.bundled.firstOrNull { it.name == want }?.let {
+                    themes.pick(it)
+                    themes.prefetch(want)
+                }
+        }
+    }
+
+
+    /** While home shows, re-checks the day/night theme every minute, so a switch hour applies mid-use. */
+    fun startDayNight() {
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                if (screens > 0) syncDayNight()
+            }
+        }
+    }
+
+
+    /** Rebuilds the Linux notification with the Plus setting; only while Linux runs. */
+    fun refreshLinuxService() {
+        if (!linux) return
+        setService(false)
+        setService(true)
     }
 
     /** Installs Linux in the background, with [agents]; progress shows in [Bootstrap.state] and the notification. */
@@ -299,26 +301,6 @@ class Runtime(
         val intent = Intent(context, LinuxService::class.java)
         // Android 12+ refuses a foreground service started from the background; the work then goes on without it.
         if (on) runCatching { context.startForegroundService(intent) }.onFailure { Log.w(TAG, "cannot start the service", it) } else context.stopService(intent)
-    }
-
-    /** Rebuilds the Linux notification with the Plus setting; only while Linux runs. */
-    fun refreshLinuxService() {
-        if (!linux) return
-        setService(false)
-        setService(true)
-    }
-
-    /** Draws every Linux icon again (shape, grayscale); the list stays. */
-    fun redrawLinuxIcons() {
-        linuxIcons.clear()
-        linuxMasks.clear()
-        scope.launch { refreshApps() }
-    }
-
-    /** Draws every app icon again with the Plus icon settings. */
-    fun redrawAllIcons() {
-        androidApps.redrawIcons()
-        redrawLinuxIcons()
     }
 
     /** Guest configs follow the theme and the installed agents; only while there is a guest. */
@@ -445,74 +427,9 @@ class Runtime(
         if (screens == 0) proot.procShim.setActive(false)
     }
 
-    /**
-     * Applies the day/night theme when auto-switching wants another one
-     * showing; a no-op when auto is off, that half keeps its theme, or it
-     * already shows. A theme not downloaded yet applies its bundled colors
-     * and fetches the rest, like picking it by hand.
-     */
-    fun syncDayNight() {
-        scope.launch {
-            val want = PlusPrefs.wantedTheme() ?: return@launch
-            if (themes.picked == want) return@launch
-            themes.themes.firstOrNull { it.name == want }?.let { themes.apply(it) }
-                ?: themes.bundled.firstOrNull { it.name == want }?.let {
-                    themes.pick(it)
-                    themes.prefetch(want)
-                }
-        }
-    }
-
-    /** While home shows, re-checks the day/night theme every minute, so a switch hour applies mid-use. */
-    fun startDayNight() {
-        scope.launch {
-            while (true) {
-                delay(60_000)
-                if (screens > 0) syncDayNight()
-            }
-        }
-    }
-
-    /** Rescans .desktop entries; the list only changes (and recomposes) when entries do. */
+    /** Rescans .desktop entries; see [LinuxAppCatalog.refresh]. */
     suspend fun refreshApps() {
-        if (!linux) return
-        val apps = withContext(Dispatchers.IO) { loadLinuxApps(proot) }
-        if (apps != linuxApps.toList()) {
-            linuxApps.clear()
-            linuxApps += apps
-        }
-        val ids = apps.mapTo(HashSet()) { it.id }
-        // An entry can change its Icon= under the same id: on a fresh install, pacman's micro.desktop
-        // shows up before the launcher's Editor entry replaces it.
-        for (app in apps) {
-            if (linuxIconNames[app.id].let { it != null && it != app.icon }) {
-                linuxIcons -= app.id
-                linuxMasks -= app.id
-                linuxIconNames -= app.id
-            }
-        }
-        linuxIcons.keys.retainAll(ids)
-        linuxMasks.keys.retainAll(ids)
-        linuxIconNames.keys.retainAll(ids)
-        val missing = apps.filter { it.icon != null && it.id !in linuxIcons }
-        if (missing.isEmpty()) return
-        val size = (52 * context.resources.displayMetrics.density).toInt()
-        val loaded =
-            withContext(Dispatchers.IO) {
-                missing.mapNotNull { app ->
-                    val file = resolveLinuxIcon(proot.rootfs, app.icon!!) ?: return@mapNotNull null
-                    decodeIcon(file, size)?.let {
-                        val (top, bottom) = PlusPrefs.resolvedTints()
-                        finishIcon(it, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, top, bottom)
-                    }?.let { Triple(app, it.asImageBitmap(), bitmapMask(it).asImageBitmap()) }
-                }
-            }
-        for ((app, icon, mask) in loaded) {
-            linuxIcons[app.id] = icon
-            linuxMasks[app.id] = mask
-            linuxIconNames[app.id] = app.icon!!
-        }
-
+        if (linux) linuxApps.refresh()
     }
 
     /** A pinned app's icon as the drawer shows it, or its silhouette; null until loaded, or if it has none. */
@@ -523,7 +440,7 @@ class Runtime(
         androidKeyOf(shortcut)?.let { return if (mono) androidApps.masks[it] else androidApps.icons[it] }
         shortcut.owl?.let { file -> return widgets.specs.firstOrNull { it.file.name == file }?.let { owlIcon(it, mono) } }
         val id = shortcut.linux?.id ?: return null
-        return if (mono) linuxMasks[id] else linuxIcons[id]
+        return if (mono) linuxApps.masks[id] else linuxApps.icons[id]
     }
 
     /** Owl apps' icons and silhouettes, by their SVG (or image) and the accent they were drawn in: a theme change draws them anew. */
@@ -605,7 +522,7 @@ class Runtime(
 
     /** Opens a pinned app from the home screen. A Linux one runs its current desktop entry, which an update may have changed. */
     fun open(shortcut: Shortcut) {
-        shortcut.linux?.let { pinned -> launch(linuxApps.firstOrNull { it.id == pinned.id } ?: pinned) }
+        shortcut.linux?.let { pinned -> launch(linuxApps.apps.firstOrNull { it.id == pinned.id } ?: pinned) }
         shortcut.component?.let { c -> androidApps.pinned(c, shortcut.profile)?.let(androidApps::open) ?: androidApps.open(c, shortcut.profile) }
         shortcut.androidShortcut?.let { androidApps.open(it, shortcut.profile) }
         shortcut.owl?.let(::openOwlApp)
@@ -642,7 +559,7 @@ class Runtime(
         title: String,
     ): String {
         launchedNames[appId]?.let { return it }
-        linuxApps.firstOrNull { it.matches(appId) }?.let { return it.name }
+        linuxApps.apps.firstOrNull { it.matches(appId) }?.let { return it.name }
         return title.ifEmpty { appId.ifEmpty { "Linux" } }
     }
 
@@ -653,7 +570,7 @@ class Runtime(
     ): Agent? = launchedAgents[appId] ?: AGENTS.firstOrNull { it.name == name }
 
     /** The drawer icon of the app called [name] (an agent's logo, say); null until loaded, or if it has none. */
-    fun iconNamed(name: String): ImageBitmap? = linuxApps.firstOrNull { it.name == name }?.let { linuxIcons[it.id] }
+    fun iconNamed(name: String): ImageBitmap? = linuxApps.apps.firstOrNull { it.name == name }?.let { linuxApps.icons[it.id] }
 
     /**
      * Opens the settings activity at [page]: settings itself comes back to where it was left, another screen

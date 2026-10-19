@@ -33,8 +33,8 @@ data class Agent(
 val AGENTS =
     listOf(
         Agent("claude", "Claude Code", "Anthropic's coding agent", "claude"),
-        Agent("opencode", "OpenCode", "Open source agent, any model provider", "npm:@opencode/cli"),
-
+        // mise installs OpenCode 2 from npm (@opencode/cli).
+        Agent("opencode", "OpenCode", "Open source agent, any model provider", "opencode", node = true),
         Agent("codex", "Codex", "OpenAI's coding agent", "codex"),
         Agent("grok", "Grok", "xAI's coding agent", "npm:@xai-official/grok"),
         Agent("copilot", "GitHub Copilot", "GitHub's coding agent", "copilot"),
@@ -81,7 +81,8 @@ fun agentInvocation(
     prompt: String,
     readOnly: Boolean = false,
 ): String {
-    val quoted = shellQuote(prompt)
+    // A prompt starting with a dash would be read as an option (claude --settings=... runs hooks); a space in front isn't.
+    val quoted = shellQuote(if (prompt.startsWith("-")) " $prompt" else prompt)
     return when {
         agentBin == "opencode" -> "$agentBin --prompt $quoted"
         agentBin == "copilot" -> "$agentBin -i $quoted"
@@ -147,25 +148,9 @@ class AgentStore(
      */
     fun installScript(agent: Agent) =
         buildString {
-            if (!mise.exists()) append("curl -fsSL https://mise.run | sh && ")
-            if (agent.pkg.startsWith("npm:")) {
-                val packageSpec = agent.pkg.removePrefix("npm:")
-                val shim = "/root/.local/share/mise/shims/${agent.bin}"
-                append("mise use -g node@lts && ")
-                // A previous `mise use -g <bin>` (e.g. `opencode`) leaves a broken tool entry behind; drop it first.
-                if (agent.bin != packageSpec) append("mise unuse -g ${shellQuote(agent.bin)} || true; ")
-                // npm may have scripts disabled (mise sets ignore-scripts); @opencode/cli needs its postinstall.
-                append("npm config delete ignore-scripts || true; ")
-                // A previous try left a copy without its postinstall binary; reinstall from scratch.
-                append("npm uninstall -g ${shellQuote(packageSpec)} || true; ")
-                append("npm install -g ${shellQuote(packageSpec)} --no-ignore-scripts && ")
-                append("npm explore -g ${shellQuote(packageSpec)} -- npm run postinstall || true; ")
-                append("mkdir -p /root/.local/share/mise/shims && ")
-                append("printf '%s\\n' '#!/bin/sh' 'exec \$(npm prefix -g)/bin/${agent.bin} \"\$@\"' > ${shellQuote(shim)} && chmod +x ${shellQuote(shim)}")
-            } else {
-                append("mise use -g ${shellQuote(agent.pkg)}")
-            }
-
+            append(if (mise.exists()) "$MISE_SELF_UPDATE && " else "curl -fsSL https://mise.run | sh && ")
+            if (agent.node) append("mise use -g node@lts && ")
+            append("mise use -g ${shellQuote(agent.pkg)}")
             // Downloads are only needed during install; storage on phones is tight.
             append(" && mise cache clear && rm -rf ~/.local/share/mise/downloads")
         }

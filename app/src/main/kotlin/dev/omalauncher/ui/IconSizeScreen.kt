@@ -40,7 +40,7 @@ fun IconSizeScreen(
                         .background(if (IconSize.scale == scale) Palette.accent.copy(alpha = 0.12f) else Palette.surface)
                         .clickable {
                             IconSize.choose(context, scale)
-                            runtime.androidApps.redrawIcons()
+                            runtime.androidApps.refreshIcons()
                         }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,

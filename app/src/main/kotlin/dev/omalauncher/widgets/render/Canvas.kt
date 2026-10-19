@@ -31,13 +31,16 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import dev.omalauncher.ui.LauncherStyle
 import dev.omalauncher.ui.Palette
@@ -247,14 +250,18 @@ private class Painter(
             }
             "text" -> {
                 val color = Builtins.argb(named["color"] ?: named["fill"] ?: Num(0.0), inst)?.let { androidx.compose.ui.graphics.Color(it) } ?: Palette.foreground
+                // Since owl 10 styled like a Text: its font, weight, slant and spacing, and a list is spans.
+                val styled = inst.program.level >= 10
                 val layout =
                     measurer.measure(
-                        first.text(),
+                        if (styled && first is Lst) spans(first, inst) else AnnotatedString(first.text()),
                         TextStyle(
                             color = color,
-                            fontFamily = LauncherStyle.font,
+                            fontFamily = if (styled) fontFamily(named["font"], inst) else LauncherStyle.font,
                             fontSize = (named["size"]?.num() ?: 13.0).sp,
-                            fontWeight = if (named["bold"]?.truthy == true) FontWeight.Bold else null,
+                            fontWeight = (if (styled) weight(named["fontWeight"]) else null) ?: if (named["bold"]?.truthy == true) FontWeight.Bold else null,
+                            fontStyle = if (styled && named["italic"]?.truthy == true) FontStyle.Italic else null,
+                            letterSpacing = (if (styled) textUnit(named["letterSpacing"]) else null) ?: TextUnit.Unspecified,
                         ),
                     )
                 val w = layout.size.width / density

@@ -59,6 +59,25 @@ class LauncherState {
      */
     var barHeight by mutableIntStateOf(0)
 
+    /**
+     * Only faces (`face "…" { }`), or the empty one waiting left of page 1, show on home: they run under the
+     * system bars, so the bands behind those make way. The strip and the bar slide away by [barShift].
+     */
+    var faceShowing by mutableStateOf(false)
+
+    /**
+     * Where the strip and the bar stand across, in screen widths ([barShift]): they belong to the tile pages and
+     * slide with them, out past a face. Read while drawing, so a swipe moves them without recomposing.
+     */
+    var barShift by mutableStateOf<() -> Float>({ 0f })
+
+    /** Only faces show, and all of them say `statusBar: false` now. */
+    var statusBarAway by mutableStateOf(false)
+
+    /** [statusBarAway], and nothing over it: no drawer, menu or panel. Then the status bar hides. */
+    val fullScreen: Boolean
+        get() = statusBarAway && drawer.value < 0.01f && !homeMenuOpen && shared == null && sharing == null
+
     /** Home page currently showing (1-based); the drawer pins apps there. */
     var currentPage by mutableStateOf(1)
 

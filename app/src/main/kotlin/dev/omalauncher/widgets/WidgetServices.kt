@@ -24,6 +24,7 @@ import android.os.StatFs
 import android.view.Display
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.ImageBitmap
 import dev.omalauncher.BuildConfig
 import android.os.Process
@@ -35,6 +36,8 @@ import android.widget.Toast
 import dev.omalauncher.MainActivity
 import dev.omalauncher.R
 import dev.omalauncher.Runtime
+import dev.omalauncher.linux.Agent
+import dev.omalauncher.linux.agentInvocation
 import dev.omalauncher.linux.GuestShell
 import dev.omalauncher.linux.Proot
 import dev.omalauncher.linux.ShellPool
@@ -54,7 +57,13 @@ import dev.omalauncher.widgets.lang.Value
 import dev.omalauncher.widgets.lang.WidgetError
 import dev.omalauncher.widgets.lang.bool
 import dev.omalauncher.androidAppKey
+import dev.omalauncher.ui.AppHit
 import dev.omalauncher.ui.LauncherStyle
+import dev.omalauncher.ui.SettingsPage
+import dev.omalauncher.ui.allApps
+import dev.omalauncher.ui.appIconOf
+import dev.omalauncher.ui.open
+import dev.omalauncher.ui.recentApps
 import dev.omalauncher.widgets.runtime.Alarm
 import dev.omalauncher.widgets.runtime.Media
 import dev.omalauncher.widgets.runtime.Modes
@@ -153,6 +162,8 @@ class WidgetServices(
             "alarm" -> alarm.value()
             "modes" -> modes.value()
             "apps" -> apps()
+            "agents" -> agents()
+            "recent" -> recent()
             else -> throw WidgetError("unknown android source $name")
         }
 
@@ -163,6 +174,10 @@ class WidgetServices(
             "volume" -> volume.updates()
             "alarm" -> alarm.updates()
             "modes" -> modes.updates()
+            // Both read Compose state: the app list and its usage, the installed agents and the one picked.
+            "apps" -> snapshotFlow { apps() }
+            "agents" -> snapshotFlow { agents() }
+            "recent" -> snapshotFlow { recent() }
             "battery" ->
                 callbackFlow {
                     val receiver =
@@ -208,6 +223,8 @@ class WidgetServices(
         val key = androidAppKey(app.component, app.profile)
         return if (LauncherStyle.monochromeIcons) apps.masks[key] else apps.icons[key]
     }
+
+    override fun launcherIcon(key: String) = appIconOf(runtime, key, LauncherStyle.monochromeIcons)
 
     override fun terminal(
         command: String?,
@@ -287,7 +304,7 @@ class WidgetServices(
     }
 
     /**
-     * Launchable Android apps for `source a = android.apps`, each `{key, name, package, component, profile, system, icon, score, last}`.
+     * Launchable Android apps for `source a = android.apps`, updated as apps come and go and are opened, each `{key, name, package, component, profile, system, icon, score, last}`.
      * `key` is [dev.omalauncher.AndroidApp.key], unique across profiles, for `androidApp(a.key)`; `profile` is `work` or
      * `clone` as on notifications, else null; `icon` is the `app:` src for that copy. `score` and `last` are what the
      * search ranks by ([dev.omalauncher.AppUsage]), so a widget can rank apps the same way.
@@ -308,6 +325,59 @@ class WidgetServices(
                         "icon" to Str("app:${app.component.packageName}${kind?.let { "@$it" } ?: ""}"),
                         "score" to Num(Math.round(runtime.usage.score(usage) * 10.0) / 10.0),
                         "last" to (runtime.usage.last(usage)?.let { Num((it / 1000).toDouble()) } ?: Null),
+                    ),
+                )
+            },
+        )
+
+    /**
+     * The coding agents installed in Linux, for `source ag = android.agents`: `{default, installed}`, each agent
+     * `{bin, name, description, command, key, icon}`. `default` is the one the prompt bar asks (null with none
+     * installed) and the one `ask(text)` asks. `key` is its drawer entry's, for `open(...)`, and `icon` its logo.
+     */
+    private fun agents(): Value {
+        fun agent(a: Agent): Value {
+            // The drawer entry AgentStore.managed() writes for it.
+            val key = "l:agent-${a.bin}"
+            return Obj(
+                mapOf(
+                    "bin" to Str(a.bin),
+                    "name" to Str(a.name),
+                    "description" to Str(a.description),
+                    "command" to Str(a.command),
+                    "key" to Str(key),
+                    "icon" to Str("icon:$key"),
+                ),
+            )
+        }
+        val store = runtime.agents
+        return Obj(mapOf("default" to (store.default?.let(::agent) ?: Null), "installed" to Lst(store.installed.map(::agent))))
+    }
+
+    /**
+     * The recent apps strip's apps for `source r = android.recent`, last opened first: Android and Linux apps, owl
+     * apps and shortcuts, each `{key, kind, name, icon, score, last}`. `kind` is `android`, `linux`, `owl` or
+     * `shortcut`; `open(r.key)` opens one and `icon` is its `icon:` src. Like the strip it reorders only once
+     * home is out of sight, so a tap doesn't move what's under the finger.
+     */
+    private fun recent(): Value =
+        Lst(
+            recentApps(runtime, Builtins.MAX_LIST).map { hit ->
+                val kind =
+                    when (hit) {
+                        is AppHit.Android -> "android"
+                        is AppHit.Linux -> "linux"
+                        is AppHit.Owl -> "owl"
+                        is AppHit.Shortcut -> "shortcut"
+                    }
+                Obj(
+                    mapOf(
+                        "key" to Str(hit.key),
+                        "kind" to Str(kind),
+                        "name" to Str(hit.label),
+                        "icon" to Str("icon:" + hit.key),
+                        "score" to Num(Math.round(runtime.usage.score(hit.key) * 10.0) / 10.0),
+                        "last" to (runtime.usage.last(hit.key)?.let { Num((it / 1000).toDouble()) } ?: Null),
                     ),
                 )
             },
@@ -382,6 +452,8 @@ class WidgetServices(
             "torch" -> modes.torch(args[0])
             "share" -> share(arg)
             "haptic" -> view?.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            "open" -> openApp(arg)
+            "ask" -> ask(arg, args.getOrNull(1)?.takeIf { it != Null }?.toString())
         }
         // Anything the action changed should show up without waiting for the next interval.
         scope.launch {
@@ -550,6 +622,28 @@ class WidgetServices(
             return
         }
         context.packageManager.getLaunchIntentForPackage(arg)?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
+    }
+
+    /** open(key): an app from `android.recent` or `android.agents`, or an `android.apps` key, opened as from the drawer. */
+    private fun openApp(key: String) {
+        val apps = allApps(runtime)
+        (apps.firstOrNull { it.key == key } ?: apps.firstOrNull { it.key == "a:$key" })?.open(runtime)
+    }
+
+    /**
+     * ask(text) or ask(text, bin): a terminal with the agent answering [prompt], as the prompt bar sends it: the
+     * default agent, or the installed one called [bin]. With no agent installed, the agents settings instead.
+     */
+    private fun ask(
+        prompt: String,
+        bin: String?,
+    ) {
+        val p = prompt.trim()
+        if (p.isEmpty()) return
+        val agents = runtime.agents
+        val agent = bin?.let { b -> agents.installed.firstOrNull { it.bin == b } } ?: agents.default
+        if (agent == null) return launcherAction?.invoke("agents") ?: runtime.openSettings(SettingsPage.Agents)
+        runtime.terminal("${agentInvocation(agent.bin, p)}; exec bash", agent.name, agent)
     }
 
     private fun copy(text: String) {

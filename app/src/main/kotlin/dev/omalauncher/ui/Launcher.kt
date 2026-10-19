@@ -4,11 +4,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.activity.compose.BackHandler
-import android.app.Activity
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.view.WindowManager
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
@@ -38,13 +33,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -66,6 +54,8 @@ import dev.omalauncher.widgets.checkSecretsCommand
 import dev.omalauncher.widgets.editWidgetCommand
 import dev.omalauncher.widgets.publishWidgetCommand
 import dev.omalauncher.widgets.reviewSharedWidgetCommand
+import dev.omalauncher.widgets.render.Backdrop
+import dev.omalauncher.widgets.render.LocalBackdrop
 import dev.omalauncher.widgets.render.LocalHomeCovered
 import dev.omalauncher.widgets.render.LocalInputFocus
 
@@ -93,17 +83,6 @@ private fun DesktopScreen(
     state: LauncherState,
 ) {
     val context = LocalContext.current
-    // Plus blurs the wallpaper behind the window, so widget tiles frost over; needs Android 12+.
-    LaunchedEffect(PlusPrefs.widgetBlur) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@LaunchedEffect
-        val window = (context as? Activity)?.window ?: return@LaunchedEffect
-        if (PlusPrefs.widgetBlur) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-            window.attributes = window.attributes.apply { blurBehindRadius = 80 }
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-        }
-    }
     BackHandler {
         when {
             state.shared != null -> state.shared = null
@@ -128,12 +107,14 @@ private fun DesktopScreen(
             }
         }
     }
-    SystemBarFrames()
+    // A face runs under them, so their bands make way for it.
+    if (!state.faceShowing) SystemBarFrames()
     val covered = remember(state) { { state.homeCovered || runtime.widgets.openScreen != null } }
-    CompositionLocalProvider(LocalHomeCovered provides covered) {
-        Column(Modifier.fillMaxSize().safePadding()) {
-            HomeScreen(runtime, state, Modifier.weight(1f))
-        }
+    // What frosted nodes blur: the background drawn above, or by our live wallpaper, slid as far as the pages.
+    val backdrop = remember(runtime, state) { Backdrop({ runtime.themes.background }, { state.wallpaperOffset }) }
+    CompositionLocalProvider(LocalHomeCovered provides covered, LocalBackdrop provides backdrop) {
+        // The whole window: a face fills it, and tiles keep clear of the system bars and the bar themselves.
+        HomeScreen(runtime, state, Modifier.fillMaxSize())
     }
     HomeMenu(runtime, state)
 
@@ -141,50 +122,13 @@ private fun DesktopScreen(
     val panelShown by remember(state) { derivedStateOf { state.drawer.value > 0.01f } }
     // Closing it forgets the search, like stock drawers: the next swipe up shows every app, not the old results.
     LaunchedEffect(panelShown) { if (!panelShown) state.query = "" }
-    // Ranked off the main thread, so typing never waits on it; blank clears at once.
-    var search by remember(runtime) { mutableStateOf(BarSearch(emptyList(), false)) }
-    LaunchedEffect(runtime, state) {
-        snapshotFlow { state.query }
-            .debounce(90)
-            .collectLatest { query ->
-                search = if (query.isBlank()) BarSearch(emptyList(), false) else withContext(Dispatchers.Default) { searchApps(runtime, query) }
-            }
-    }
+    val search by remember(runtime, state) { derivedStateOf { searchApps(runtime, state.query) } }
     val highlighted = search.highlighted(state.picked)
 
     fun launch(hit: AppHit) {
-        runtime.usage.record(hit.key)
         state.query = ""
         state.closeNow()
-        when (hit) {
-            is AppHit.Linux -> runtime.launch(hit.app)
-            is AppHit.Android -> runtime.androidApps.open(hit.app)
-            is AppHit.Shortcut -> runtime.androidApps.open(hit.shortcut)
-            is AppHit.Owl -> runtime.openOwlApp(hit.spec.file.name)
-        }
-    }
-
-    /** Opens [url] in the default browser; false when nothing opens it. */
-    fun openUrl(url: String) = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.isSuccess
-
-    /** Leaves the drawer behind, like opening an app does. */
-    fun leavePanel() {
-        state.query = ""
-        state.closeNow()
-    }
-
-    /** The bar's text on the web, in the default browser. */
-    fun searchWeb(query: String) {
-        if (query.isBlank()) return
-        leavePanel()
-        openUrl(Search.webUrl(query))
-    }
-
-    /** The bar's text in the app store: the Play app, its site without it, or F-Droid's site. */
-    fun searchStore(query: String) {
-        if (query.isBlank()) return
-        leavePanel()
-        if (Search.store != Search.Store.Play || !openUrl(Search.storeUrl(query))) openUrl(Search.storeWebUrl(query))
+        hit.open(runtime)
     }
 
     val handlers =
@@ -244,7 +188,7 @@ private fun DesktopScreen(
     val side = homeSide()
     if (side != null && !panelShown) {
         if (!runtime.terminals.typing) {
-            SideRail(runtime, state, handlers, side, Modifier.fillMaxSize().safePadding())
+            SideRail(runtime, state, handlers, side, Modifier.fillMaxSize().graphicsLayer { translationX = state.barShift() * size.width }.safePadding())
         }
     } else {
         Column(
@@ -262,8 +206,7 @@ private fun DesktopScreen(
                         search = search,
                         highlighted = highlighted,
                         handlers = handlers,
-                        onWeb = ::searchWeb,
-                        onStore = ::searchStore,
+                        onAsk = { state.promptRequest = PromptRequest.Send },
                         onSettings = { state.show() },
                         modifier =
                             Modifier.graphicsLayer {
@@ -274,13 +217,16 @@ private fun DesktopScreen(
                     )
                 }
             }
-            // Hidden while a tile types: it would sit on the keyboard, over the tile.
+            // Hidden while a tile types: it would sit on the keyboard, over the tile. They slide with the tile pages,
+            // out past a face; swiping up there opens the drawer, which brings them back.
             if (!runtime.terminals.typing || runtime.terminals.keyboardLeaving) {
-                // Home only: the open app list has everything.
-                // Swiping up from either does what it does on home, as from the dock on stock launchers.
-                if (showRecents() && !panelShown) RecentStrip(runtime, handlers, Modifier.homeSwipe(runtime, state))
-                // Insets itself by the grid gap, so it lines up with the tiles and the gap still takes taps.
-                PromptBar(runtime, state, search = search, highlighted = highlighted, onLaunch = handlers.launch, onWeb = ::searchWeb, onStore = ::searchStore, modifier = Modifier.homeSwipe(runtime, state))
+                Column(Modifier.graphicsLayer { if (!panelShown) translationX = state.barShift() * size.width }) {
+                    // Home only: the open app list has everything.
+                    // Swiping up from either does what it does on home, as from the dock on stock launchers.
+                    if (LauncherStyle.recentApps && !panelShown) RecentStrip(runtime, handlers, Modifier.homeSwipe(runtime, state))
+                    // Insets itself by the grid gap, so it lines up with the tiles and the gap still takes taps.
+                    PromptBar(runtime, state, search = search, highlighted = highlighted, onLaunch = handlers.launch, modifier = Modifier.homeSwipe(runtime, state))
+                }
             }
         }
     }

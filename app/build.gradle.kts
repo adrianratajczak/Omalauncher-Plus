@@ -21,10 +21,8 @@ android {
         applicationId = "dev.omalauncher.plus"
         minSdk = 29
         targetSdk = 37
-        // Upstream's numbering (14 / 0.7.2), suffixed; this fork also has its own applicationId.
-        versionCode = 16
-        versionName = "0.8.1+"
-
+        versionCode = 17
+        versionName = "0.9.0"
         ndk { abiFilters += "arm64-v8a" }
     }
 

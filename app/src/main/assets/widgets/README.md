@@ -2,9 +2,9 @@
 
 Each `*.owl` file in this folder is a widget on the Android home screen,
 written in OWL, a small declarative language in the spirit of QML. Its first
-word says what it is: `widget "name" { }` is a home-screen tile, and
-`app "name" { }` an app in the app drawer that opens full screen (see Apps).
-Everything below is about widgets unless it says otherwise; apps are written
+word says what it is: `widget "name" { }` is a home-screen tile, `face "name" { }` a face, a whole home page
+left of your first one (see Faces), and `app "name" { }` an app in the app drawer that opens full screen
+(see Apps). Everything below is about widgets unless it says otherwise; faces and apps are written
 the same way. Save a file and it appears within a second. Then run `owl-check <file>`:
 
 ```
@@ -74,17 +74,19 @@ that read it redraw. Properties are separated by newlines or `;`.
 | `source n = android.notifications` | the phone's notifications, newest first, updated as they come and go: `{available, count, items}`, each item `{key, app, package, profile, icon, title, text, time, clearable}` (`time` in Unix seconds; `profile` is `work` or `clone` for a notification from a work profile or a cloned app, else null; `icon` is the app's icon for `Image { src: i.icon }`, from that profile, owl 7). Ongoing ones (music, downloads) are left out. Needs the same notification access as media. See `examples/98-notifications.owl` (owl 4) |
 | `source v = android.volume` | the media volume: `{level, muted, steps}` (`level` in percent, `steps` how many the phone has), updated as it changes. Set it with `volume(...)` (owl 4) |
 | `source a = android.alarm` | the next alarm set in any clock app: `{set, time, app}`, updated as it changes. `time` is in Unix seconds (`fmtTime(a.time, "EEE HH:mm")`, or `at a.time`), `app` the clock app's package (`androidApp(a.app)`); both null when no alarm is set (owl 7) |
-| `source a = android.apps every 1m` | the phone's launchable apps, polled: a list of `{key, name, package, component, profile, system, icon, score, last}`. `key` is unique even with the same app in a work profile or a clone, and `androidApp(a.key)` opens that copy; `profile` is `work` or `clone` for those, else null; `icon` goes in `Image { src: a.icon }`. `score` and `last` (Unix seconds, null if never opened) are what the search ranks by: opens fade by half every two weeks, and `androidApp(...)` counts like opening from the drawer (owl 8) |
+| `source a = android.apps` | the phone's launchable apps, updated as they're installed, removed and opened: a list of `{key, name, package, component, profile, system, icon, score, last}`. `key` is unique even with the same app in a work profile or a clone, and `androidApp(a.key)` opens that copy; `profile` is `work` or `clone` for those, else null; `icon` goes in `Image { src: a.icon }`. `score` and `last` (Unix seconds, null if never opened) are what the search ranks by: opens fade by half every two weeks, and `androidApp(...)` counts like opening from the drawer (owl 8) |
+| `source ag = android.agents` | the coding agents installed in Linux: `{default, installed}`, each agent `{bin, name, description, command, key, icon}`, updated as they change. `default` is the one the prompt bar asks and `ask(text)` sends to, null with none installed; `open(a.key)` starts one without a prompt, and `icon` is its logo (owl 10) |
+| `source r = android.recent` | the apps in the recent strip above the prompt bar, last opened first: a list of `{key, kind, name, icon, score, last}`, Android and Linux apps, owl apps and shortcuts alike (`kind` is `android`, `linux`, `owl` or `shortcut`). `open(r.key)` opens one, `icon` goes in `Image { src: r.icon }`, and `score` and `last` are as in `android.apps`. Like the strip, it reorders once home is out of sight, not under the finger that tapped (owl 10) |
 | `source m = android.modes` | the phone's modes: `{dnd, saver, ringer, torch}`, updated as they change. `dnd` is Do Not Disturb in any form, `saver` battery saver, `ringer` is `normal`, `vibrate` or `silent`, and `torch` is null on a phone without a flash. Switch the torch with `torch(...)` (owl 7) |
 | `state x = 0` | a value that handlers can change. Add `persist` to keep it across restarts: `state endsAt = 0 persist` |
 | `let x = expr` | a derived value, recomputed only when what it reads changes. It can use sources, state and earlier lets |
 | `let h = history(x, 60)` | the last 60 values of `x`, sampled whenever a source updates (for Sparkline). With `persist` it survives restarts, unless it's older than it would take to fill |
 | `let p = prev(x)` | the previous value of `x`, for rates: `let rate = (bytes - p) / 5` |
 | `component Name(a, b = 1) { ... }` | a reusable node; use it as `Name { a: 1 }` |
-| `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, so the widget is one self-contained file |
+| `asset logo = base64"iVBOR..."` | an embedded image (under 2 MB) for `Image { src: logo }`, or a font for `font: logo` (owl 10, see Fonts), so the widget is one self-contained file |
 | `requires { pacman: ["jq", "curl"] }` | packages the widget's commands need; see Dependencies |
 | `meta { description: "..."; version: "1.0"; license: "MIT"; category: "news" }` | needed to publish to the widget store (see Sharing) |
-| `meta { owl: 9 }` | the language version the widget needs (this launcher has 9; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8, and `parseTime`, `fmtAgo`, `fmtNum`, `random`, `shuffle`, `hash`, `fmtTime`'s zone and language, `set`, `remove`, `merge`, `reduce`, `scan`, `groupBy`, `toJson`, `capitalize`, `asin`, `acos`, `flatten`'s depth, `on … first`, and `if` and `let` in handlers 9; using them without declaring it is an error |
+| `meta { owl: 10 }` | the language version the widget needs (this launcher has 10; the default is 1). Older launchers say "update the launcher" instead of failing on what they don't know. `Terminal` needs 2, `sprite` 3, triggers, `file`, `Slider`, `Input`, `android.notifications`, `android.volume`, `volume` and `notification` need 4, and `screen { }`, `screen()`, `close()`, `screenWidth` and `screenHeight` need 5, `Input`'s `focus`, `sh()` and `corners` 6, and `android.alarm`, `android.modes`, `torch`, `share` and `haptic` 7, and `app "…" { }` files, `android.apps`, `enc`, `post`, images from the web, `sound` and `screenInset` 8, and `parseTime`, `fmtAgo`, `fmtNum`, `random`, `shuffle`, `hash`, `fmtTime`'s zone and language, `set`, `remove`, `merge`, `reduce`, `scan`, `groupBy`, `toJson`, `capitalize`, `asin`, `acos`, `flatten`'s depth, `on … first`, and `if` and `let` in handlers 9, and `face "…" { }` files, `onLongPress`, Text's `spans`, `fontWeight` and `letterSpacing`, gradient backgrounds, `frost`, fonts of a widget's own and Canvas `text`'s `font`, `fontWeight`, `italic` and `letterSpacing`, `android.agents`, `android.recent`, `open`, `ask`, `Popup` and Input's `underline` 10; using them without declaring it is an error |
 | `onTap: ...` | runs when the tile (not a button inside it) is tapped |
 | `screen { ... }` | a full-screen view of the widget, opened with `screen()`; see Screens (owl 5) |
 | `every 10s { ... }`, `at t { ... }`, `when c { ... }`, `on x { ... }` | statements that run without a tap; see Triggers |
@@ -195,7 +197,7 @@ second is held back and reported (one that changes what it watches would otherwi
 | chance | `random()`, `random(n)`, `random(a, b)`, `shuffle(list)`, only in handlers and a state's first value; `hash(...)` and `shuffle(list, seed)` anywhere. See Chance |
 | lists | `range(n)` or `range(a, b, step)`, `map filter find any all count sum avg sort sortBy reverse take drop first last indexOf unique`, `flatten(list, depth)` (depth 1 unless given), `keys values entries get(obj, key, default)`; see Changing lists and maps |
 | colors | theme names `accent foreground background muted surface border red green yellow blue magenta cyan orange` plus `bright_*`, `color0`…`color15`; `#7aa2f7`; `rgb(r, g, b, a)`, `hsl(h, s, l, a)`, `alpha(c, 0.5)`, `mix(a, b, t)` |
-| gradients | `linear(x0, y0, x1, y1, [colors])`, `radial(cx, cy, r, [colors])`: fills in Canvas |
+| gradients | `linear(x0, y0, x1, y1, [colors])`, `radial(cx, cy, r, [colors])`: fills in Canvas, and backgrounds (owl 10, see Nodes) |
 
 Prefer theme color names: widgets then follow theme changes.
 
@@ -290,33 +292,137 @@ when lists reorder), and `let x = ...` inside any node.
 | `Flow` | a Row that wraps to new lines |
 | `Box` | stacks children on top of each other; `align: center/top/bottom/start/end/topStart/topEnd/bottomStart/bottomEnd` |
 | `Grid` | `columns` (2), `gap`; children fill cells left to right |
-| `Text` | `text`, `style: huge/title/body/small/muted/label`, `color`, `fontSize`, `bold`, `italic`, `font: mono/sans/serif/icon` (`icon` draws the Nerd Font weather glyphs U+E300–E3E3, plus 󰄬 U+F012C and 󰅖 U+F0156), `align: start/center/end`, `maxLines` |
+| `Text` | `text`, `style: huge/title/body/small/muted/label`, `color`, `fontSize`, `bold`, `italic`, `font: mono/sans/serif/icon` (`icon` draws the Nerd Font weather glyphs U+E300–E3E3, plus 󰄬 U+F012C and 󰅖 U+F0156) or since owl 10 a font of the widget's own (see Fonts), `align: start/center/end`, `maxLines`; since owl 10 `fontWeight` (100 thin to 900 black; the font shows the nearest weight it has), `letterSpacing` (sp, negative to tighten) and `spans` (see Text in pieces) |
 | `Button` | `text`, `color`, `onTap` |
 | `Progress` | `value`, `max` (100), `color`, `track` |
 | `Ring` | circular progress: `value`, `max` (1), `color`, `track`, `thickness` (6), `start`/`sweep` (degrees; `start: 225; sweep: 270` makes a gauge). 64 dp unless sized |
 | `Sparkline` | `values` (a list, usually a `history`), `min` (0), `max`, `color`, `area: true` or a color, `thickness` |
-| `Image` | `src`: an `asset`, a path in this system (`"~/pics/a.png"`), an `https://` URL (owl 8, see Images from the web) or an Android app's icon (`"app:org.pkg"`, as the drawer shows it, badge included; a silhouette in the foreground color with monochrome icons; `"app:org.pkg@work"` and `"@clone"` ask for the copy in a work profile or the clone, owl 7), `fit: contain/cover/fill`, `tint` |
+| `Image` | `src`: an `asset`, a path in this system (`"~/pics/a.png"`), an `https://` URL (owl 8, see Images from the web) or an Android app's icon (`"app:org.pkg"`, as the drawer shows it, badge included; a silhouette in the foreground color with monochrome icons; `"app:org.pkg@work"` and `"@clone"` ask for the copy in a work profile or the clone, owl 7), or any app's icon by its `android.recent` key (`"icon:l:foot"`, Linux and owl apps and shortcuts too; `android.recent` and `android.agents` give it as `icon`), `fit: contain/cover/fill`, `tint` |
 | `Canvas` | free drawing, below. Fills the space unless sized |
 | `Shader` | an AGSL shader, below. Fills the space unless sized |
 | `Spacer` | empty space: `size`, `width`, `height` or `weight` |
 | `Slider` | a horizontal slider: `value`, `min` (0), `max` (100), `step`, `color`, `track`, `live`. `onChange` gets the chosen `value` when the finger lifts, or at every step while dragging with `live: true`. Full width and 28 dp tall unless sized (owl 4) |
-| `Input` | a one-line text field: `text` (what it shows; replaces what's typed when it changes), `placeholder`, `color`, `fontSize`, `clear: true` (empty it after submitting), `focus: true` (focus it and raise the keyboard when the screen opens, or when `focus` turns true; only in a `screen { }`, owl 6). `onChange` gets the text as `value` as it's typed, `onSubmit` when the keyboard's send key is pressed (owl 4) |
+| `Input` | a one-line text field: `text` (what it shows; replaces what's typed when it changes), `placeholder`, `color`, `fontSize`, `clear: true` (empty it after submitting), `underline: false` (no line under it, for a field inside a frame of its own, owl 10), `focus: true` (focus it and raise the keyboard when the screen opens, or when `focus` turns true; only in a `screen { }`, owl 6). `onChange` gets the text as `value` as it's typed, `onSubmit` when the keyboard's send key is pressed (owl 4) |
+| `Popup` | a menu over everything, the tile, the bar and other tiles, at the start of the node that holds it: `position: below` (the default) or `above`, kept on screen and on the other side when there's no room, `gap`, `align`. Show it with `visible`; a tap outside it or Back runs `onDismiss`, which it must have, so it can close: `Box { Text { text: "menu"; onTap: open = true }  Popup { visible: open; onDismiss: open = false; … } }`. Framed like the launcher's menus unless it has a `background` or `border`. It takes no room where it's written (owl 10) |
 | `Terminal` | a live terminal (foot) in the tile: `command` (default: the login shell), `fontSize` (points; foot.ini has 8). Fills the space unless sized. See below |
 
 Every node also takes:
 
 - `width height size` (dp), `fill: true/width/height`, `weight` (share of the
   space left in a Row or Column), `padding` (`8`, `[h, v]` or `[l, t, r, b]`)
-- `background`, `border` (dp), `borderColor`, `radius`, `clip: true`
+- `background` (a color, or since owl 10 a gradient, see Gradient backgrounds), `border` (dp), `borderColor`, `radius`, `clip: true`
+- `frost` (owl 10): frosted glass, the wallpaper behind the node blurred by that many dp; see Frosted glass
   (without `radius`, bordered elements follow the launcher's corner style: 0 for edge, 4 for soft, 8 for round;
   anything else matches it with `radius: 8 * corners`)
 - `opacity`, `rotation` (degrees), `scale`, `offset: [x, y]` (dp), `visible`
 - handlers: `onTap` (with `x`, `y`) and `onDrag` (with `dx`, `dy`, `x`, `y`); `Slider` and `Input` also take
-  `onChange`, and `Input` `onSubmit`, both with `value`. Long-press
-  belongs to the home screen, which uses it to move and resize tiles
+  `onChange`, and `Input` `onSubmit`, both with `value`; `Popup` takes `onDismiss`. In pages, apps and a widget's `screen { }`,
+  `onLongPress` (with `x`, `y`, owl 10); on a tile, long-press belongs to the home screen, which uses it
+  to move and resize tiles
 - `animate prop: spring()` or `tween(300ms, "linear"/"in"/"out"/"ease")`, for `value`,
   `opacity`, `rotation`, `scale`, `color` or `background`. For springs:
   `spring(damping, stiffness)`
+
+### Text in pieces
+
+A Text's `spans` (owl 10) is its text in pieces, each styled on its own: a piece is text, or a map of its
+`text` and what differs from the rest, `color`, `bold`, `italic`, `fontSize`, `fontWeight`, `letterSpacing`
+or `font` (in a map it's a value, so the words are text there: `font: "serif"`). Spaces at a piece's ends stay. It takes the place of `text`; the Text's own properties are the rest's.
+
+```owl
+widget "clock" {
+  meta { owl: 10 }
+  source now = clock every 1m
+  state cpu = 42
+  Column {
+    Text { spans: [fmtTime(now, "HH"), {text: ":", color: accent}, fmtTime(now, "mm")]; fontSize: 64; fontWeight: 200 }
+    Text { spans: ["cpu ", {text: "${cpu}%", bold: true, color: cpu > 80 ? red : green}]; style: small }
+  }
+}
+```
+
+### Fonts
+
+Since owl 10 `font` can also be a font of the widget's own, for a clock in a display typeface, a heading in a
+serif with character or a pixel font for a game: a TTF or OTF from an `asset`, an `https://` URL or a file in
+this system (`"~/.local/share/fonts/x.ttf"`, which needs Linux). It shows the launcher's font for the moment
+it takes to load.
+
+```owl
+face "poster" {
+  meta { owl: 10 }
+  source now = clock every 1m
+  asset pixel = base64"AAEAAA=="        // a small font's whole file in base64: the widget stays self-contained
+  let fraunces = "https://raw.githubusercontent.com/google/fonts/main/ofl/fraunces/Fraunces%5BSOFT,WONK,opsz,wght%5D.ttf"
+  Column {
+    Text { spans: [fmtTime(now, "HH"), {text: ":", color: accent}, fmtTime(now, "mm")]; font: fraunces; fontSize: 96; fontWeight: 100 }
+    Text { text: "LEVEL 3"; font: pixel; fontSize: 20 }
+  }
+}
+```
+
+- **Weights.** A variable font with a weight axis (most of Google Fonts' are, `[wght]` in the name) draws
+  every `fontWeight` it has, 100 to 900. A font of one weight is drawn thicker for `bold` or 600 and up, and
+  slanted for `italic`.
+- **From the web.** Downloaded from Android and kept like images from the web, and listed for review the same
+  way: `font GET https://…`. Google Fonts' own files are in https://github.com/google/fonts, under
+  `ofl/<name>/`; take the link of the `.ttf` from `raw.githubusercontent.com`. WOFF and WOFF2 web fonts
+  don't load: Android reads TTF and OTF only.
+- **Embedded.** An asset font makes the file big (a whole font is 30 KB to 1 MB), too big for a QR code to
+  share. Embed a small one, or link one.
+- Up to 8 fonts per file, and 8 MB each. Mind the license: Google Fonts' are OFL, free to use and share.
+
+### Gradient backgrounds
+
+Since owl 10 a node's `background`, and a face's or tile's, can be a `linear(...)` or `radial(...)`. There its
+points are fractions of the node, 0 to 1 across and down, since its size in dp isn't known as you write it:
+`linear(0, 0, 0, 1, [...])` runs top to bottom, `linear(0, 0, 1, 1, [...])` corner to corner, and a radial
+one's radius is a fraction of the longer side, `radial(0.5, 0.5, 0.7, [...])`. The colors are spread evenly.
+A face's background runs under the status bar too, so a veil darker where the text is reads well on any
+wallpaper:
+
+```owl
+face "dusk" {
+  meta { owl: 10 }
+  background: linear(0, 0, 0, 1, [alpha(background, 0.85), alpha(background, 0.35), alpha(background, 0.9)])
+  Column {
+    padding: 16
+    background: radial(0.5, 0, 1, [alpha(accent, 0.3), alpha(surface, 0.6)])
+    radius: 16 * corners
+    Text { text: "evening" }
+  }
+}
+```
+
+An animated `background` is a color, as before.
+
+### Frosted glass
+
+`frost: 24` (owl 10) draws the wallpaper behind a node blurred, by about that many dp, within its `radius`.
+The node's `background` goes over it, so a translucent one tints the glass and keeps text on it readable:
+
+```owl
+face "glass" {
+  meta { owl: 10 }
+  Column {
+    padding: 16
+    frost: 24
+    background: alpha(background, 0.5)
+    radius: 18 * corners
+    Text { text: "on frosted glass" }
+  }
+}
+```
+
+It blurs the home screen's wallpaper only, not other nodes or a page's own background, and follows it as
+the pages slide. Where no launcher wallpaper is behind, as in an app's window, a widget's screen or
+owl-check's preview, there's nothing to blur and only the `background` shows, so give one that works alone.
+
+### Text in a Row
+
+Since owl 10 a Text in a Row or Flow is as wide as its text, like a Button: labels, chips and values sit side by
+side without a `width`, and a `weight: 1` neighbour takes what's left. Before, it took the whole width unless
+sized, and widgets that declare an older owl keep that. In a Column a Text still takes the whole width.
 
 `opacity`, `rotation`, `scale`, `offset`, colors and the contents of Canvas and
 Shader apply at draw time. Changing them, even every frame, costs no layout.
@@ -357,6 +463,8 @@ after it in its block (and blocks inside them), and needs a name not used for a 
 | `run("cmd")` | runs in the background (on its own shell, never retried), then refreshes this widget |
 | `x = run("cmd")` | the same, and puts the command's output into the state `x` when it finishes |
 | `androidApp("org.pkg")` | opens an Android app by package name, or by an `android.apps` key to open that copy in a work profile or clone |
+| `open(r.key)` | opens an app from `android.recent` or an agent from `android.agents` by its `key` (an `android.apps` key works too), as tapping it in the drawer would, so it counts as opened (owl 10) |
+| `ask(text)` | opens a terminal with the default agent answering `text`, as sending it from the prompt bar does; `ask(text, "codex")` asks that installed agent. Without one installed it opens the agents settings. The store's reviewer sees what a widget asks (owl 10) |
 | `copy(text)` | copies text to the Android clipboard |
 | `notify("title", "text")` | posts an Android notification (if the launcher may post them) |
 | `post("https://...", body, headers)` | sends an HTTP POST from Android: a map or list `body` goes as JSON, text as it is; `headers` is a map like `http(...)`'s. `x = post(...)` puts the answer into the state `x` when it arrives: `{code, ok, out}`, with `out` parsed when it's JSON. Never retried; a null URL sends nothing. When it succeeds, the widget's sources run again. See Sending (owl 8) |
@@ -387,7 +495,7 @@ app "flags" {
 }
 ```
 
-Like `http(...)`, the URLs are listed for whoever reviews the file: `image GET https://flagcdn.com/…`.
+Like `http(...)`, the URLs are listed for whoever reviews the file: `image GET https://flagcdn.com/…` (and fonts, see Fonts).
 Keep the start of the URL fixed, up to its first `/` after the server, so the server is known; a URL
 built entirely from values is flagged. Plain `http://` isn't loaded.
 
@@ -478,6 +586,68 @@ widget "weather" {
 Screens are for showing more, not for building apps: there's no navigation between screens, no
 lists that load as they scroll, and only the nodes above (no maps, web pages or video).
 
+## Faces
+
+A file can also be a face: a whole home page, the whole screen, as a watch face is a watch's. A launcher
+screen of your own, a dashboard to swipe to, a start page with your day on it. Faces sit left of page 1, where a stock
+launcher has its news feed, and you can have as many as you like there. A face is built like a widget,
+with the same declarations, nodes, `onTap` and `screen { }`, and it has a screen's room: up to 1000
+nodes. Faces need owl 10.
+
+```owl
+face "morning" {
+  meta { owl: 10 }
+  source now = clock every 1m
+  source wx = http("https://wttr.in/?format=j1") every 30m json
+  let cur = wx.current_condition[0]
+  Column {
+    gap: 16
+    padding: [24, 32]
+    Spacer { weight: 1 }
+    Text { text: fmtTime(now, "HH:mm"); style: huge }
+    Text { text: fmtTime(now, "EEEE d MMMM"); style: muted }
+    Text { text: cur ? "${cur.temp_C}°  ${cur.weatherDesc[0].value}" : "" }
+    Spacer { weight: 1 }
+    Spacer { height: screenInset }
+  }
+}
+```
+
+- **Where it goes.** `page: 0` (the default) is the page just left of page 1; `-1`, `-2`, ... go further
+  left. Home opens on page 1, and an empty page always waits left of the leftmost one, inviting a new
+  face there: only faces go left of page 1, never tiles. One whose place is taken goes to that empty
+  page instead. A face can also take a page right of page 1 (`page: 3`) if no tiles are there.
+- **The screen.** It fills the whole screen: the recent apps strip and the bar slide away with the tile
+  pages (swipe up for the app drawer, which brings the bar back). The status bar stays, over the face,
+  and the nodes keep clear of it; `statusBar: false` hides it while the face shows (a swipe down from the
+  top brings it back for a moment), and they keep clear of a camera cutout only. The background runs
+  under both. `statusBar` can be any expression, and the bar comes and goes as it changes: `statusBar: !playing`
+  keeps it while a game waits and hides it while one runs.
+- **The navigation bar.** The face runs on under it, like an app with `edge: true`: `screenInset` is how
+  much of its bottom the navigation bar covers, in dp, so end it with `Spacer { height: screenInset }` or
+  pad buttons along the bottom by it. While one of its `Input`s has the keyboard, `screenInset` is what the keyboard
+  covers instead, so the same Spacer lifts the field above it; a face can also leave things out then
+  (`if screenInset < 120 { ... }`) to make room. The face itself stays put, under the status bar and the keyboard.
+- **Looks.** There's no tile frame and no background: it draws straight on the wallpaper. Where text needs
+  one to be readable, give the face `background: alpha(background, 0.7)` or a gradient (owl 10), or just the
+  nodes that hold it, which can be frosted glass (`frost`, owl 10).
+  `padding` (12 by default) is around everything, as on a tile.
+- **Size.** `cols` and `rows` are the whole grid (6 or so by 12), and `tileWidth` and `tileHeight` the
+  screen's size in dp: lay it out by those, since phones differ. It takes no `size` or `minSize`.
+- **Foldables.** Unfolded, where home shows two pages of tiles side by side, a face still gets the whole
+  screen, both halves, so `tileWidth` can be more than `tileHeight`. Lay it out for that too: the examples
+  take `let wide = (tileWidth ?? 0) > (tileHeight ?? 1)` and put two columns side by side when it is. The
+  same goes for a tablet and for landscape.
+- **On the phone.** Long presses are the face's own (`onLongPress`); one that no node takes opens the home
+  menu, as on empty space between tiles. Faces are edited, shared, moved and removed in settings › pages, which lists home's pages left to right, faces and pages of tiles: drag one by its handle to move it. Swiping up opens the app drawer and sideways turns the page, so
+  a `scroll: true` Column scrolls up and down, and a face has nothing to swipe sideways.
+
+owl-check's preview of a face is the face at the phone's size, as home last laid it out. `examples/00-start.owl`
+is a whole face, a start page: the time, the weather, battery, the next alarm, notifications and your most used apps.
+Three more show other ways to draw one: `01-minimal` (a thin clock and your apps as words, in a font of its own),
+`02-pixel` (an 8-bit landscape that follows the day and the weather, drawn with sprites, over a game HUD) and
+`03-matrix` (digital rain in two depths with the time carved out of it, worked out once and drawn every frame in a Canvas).
+
 ## Apps
 
 A file can also be an app instead of a widget: a screen of its own, listed in the app drawer.
@@ -513,7 +683,7 @@ inside) for what should run to the edges, like a photo, a map, a canvas or a bar
 **Under the navigation bar.** An app ends above Android's navigation bar (the gesture handle or the
 three buttons). With `edge: true` it runs on under it, like a list that scrolls behind the bar:
 `screenHeight` then reaches the screen's bottom, and `screenInset` is how much of it the bar covers,
-in dp (0 without `edge`, and while the keyboard is up; only apps have it, since a widget's screen ends above the bar). Taps there go to Android, so keep buttons
+in dp (0 without `edge`, and while the keyboard is up; only apps and pages have it, since a widget's screen ends above the bar). Taps there go to Android, so keep buttons
 and the last row of a list above it: end a scrolling list with `Spacer { height: screenInset }`, and
 pad a view with buttons along its bottom by `screenInset`. `edge` is `true` or `false`, not an expression.
 
@@ -625,7 +795,7 @@ Canvas {
 | `arc(cx, cy, r, start, sweep)` | filled arcs are pie slices |
 | `line(x1, y1, x2, y2)` | |
 | `path(points)` | points are `[x, y]` or `{x, y}`; `closed: true` |
-| `text(s, x, y)` | `size:`, `color:`, `align: start/center/end`, `bold:`; y is the text's middle |
+| `text(s, x, y)` | `size:`, `color:`, `align: start/center/end`, `bold:`; y is the text's middle. Since owl 10 also `font:`, `fontWeight:`, `italic:` and `letterSpacing:` as on a Text, and `s` can be a list of spans |
 | `image(src, x, y, w, h)` | `src` as for `Image`; `color:` paints an SVG in one color |
 | `sprite(rows, x, y, pixel)` | pixel art (owl 3): `rows` is a list of strings, or one `"""` string of lines, with one letter per art pixel and `.` for empty. `palette: {b: accent, e: background}` colors each letter; letters it doesn't name aren't drawn, so one art can be drawn in parts that move separately. Without a palette every letter takes `fill`/`color`. `pixel` is the size of an art pixel in dp; edges land on whole screen pixels, so no seams show |
 | `translate(x, y) { }`, `rotate(deg, cx, cy) { }`, `scale(sx, sy, cx, cy) { }`, `clip(x, y, w, h) { }`, `layer(alpha) { }` | apply to the calls inside |
@@ -789,7 +959,7 @@ links.
 
 ## Limits
 
-A widget has at most 500 nodes, 2000 drawing calls per frame, lists of 1000
+A widget has at most 500 nodes (a page 1000), 2000 drawing calls per frame, lists of 1000
 items, 32 images and 128 SVGs on show at once (a view with more keeps loading them
 again and shows none for long), and a step budget per update. A widget that draws slowly animates at
 half rate. Errors never take the home screen down: the failing value shows `…`
@@ -800,12 +970,14 @@ and the message goes to `.errors/`.
 - One small, focused widget per file; name files `NN-name.owl` to order them.
 - Test commands in a terminal first. For several values, print JSON and use `json`.
 - The phone is portrait: 6 columns, ~12 rows. A full-width widget is `6xN`,
-  half-width `3xN`. Set `minSize` to what the layout still fits in.
+  half-width `3xN`. Set `minSize` to what the layout still fits in. For the whole screen, write a page.
 - Use `weight: 1` to fill leftover space and `fill: width` to stretch across.
-- A `Text` without `width`, `weight` or `fill` takes the full width. In a `Row`, give the Texts
-  next to a `weight: 1` one a `width`, or the weighted one is squeezed to nothing.
+- A `Text` without `width`, `weight` or `fill` takes the full width, except in a `Row` or `Flow` since owl 10,
+  where it's as wide as its text. Before owl 10, give the Texts next to a `weight: 1` one a `width`, or the
+  weighted one is squeezed to nothing.
 - Look at the example widgets in this folder for patterns: `90-analog-clock` (Canvas),
   `91-focus` (state, buttons and `at`), `92-aurora` (Shader), `93-latency` (stream),
   `88-notes` (Input), `98-notifications` (android.notifications), `99-volume` (Slider),
+  `65-ai-bar` (the prompt bar and recent strip: android.agents, android.recent, open and ask),
   and next to it `10-today` (a weather screen behind the tile), `20-fetch` (fastfetch as a dashboard), `45-terminal` (a live terminal) and
   `60-owl` (sprites).

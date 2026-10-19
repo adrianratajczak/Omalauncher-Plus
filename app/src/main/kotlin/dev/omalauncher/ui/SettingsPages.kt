@@ -1,5 +1,13 @@
 package dev.omalauncher.ui
 
+import dev.omalauncher.widgets.lang.OwlKind
+import dev.omalauncher.widgets.checkSecretsCommand
+import dev.omalauncher.widgets.publishWidgetCommand
+import dev.omalauncher.widgets.WidgetSpec
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -16,23 +24,17 @@ enum class SettingsPage {
     Settings,
     Style,
 
+    /** Home's pages, to arrange, edit and remove. */
+    Pages,
+
     /** The community themes, over the style screen or from the home menu's theme strip. */
     Themes,
     Agents,
     Store,
+
+    /** The store on its faces, from the empty page left of page 1. */
+    FaceStore,
     Packages,
-
-    /** Which pack's icons the apps show, or their own. */
-    IconPacks,
-
-    /** How big app icons draw: the drawer's slot, scaled. */
-    IconSize,
-
-    /** Omalauncher+'s own settings: icons, the Linux notification, corners. */
-    Plus,
-
-    /** The web engine and the app store the bar's actions search. */
-    Search,
 
     /** Install, progress, remove; opened by anything that needs Linux. */
     Linux,
@@ -94,14 +96,46 @@ private fun SettingsPage(
                 runtime,
                 onDismiss = close,
                 onStyle = { stack.push(SettingsPage.Style) },
+                onPages = { stack.push(SettingsPage.Pages) },
                 onAgents = { stack.push(SettingsPage.Agents) },
                 onPackages = { stack.push(SettingsPage.Packages) },
                 onLinux = { stack.push(SettingsPage.Linux) },
                 onLicenses = { stack.push(SettingsPage.Licenses) },
                 onGestures = { stack.push(SettingsPage.Gestures) },
-                onPlus = { stack.push(SettingsPage.Plus) },
             )
         SettingsPage.Style -> StyleScreen(runtime, onDismiss = close, onBrowse = { stack.push(SettingsPage.Themes) })
+        SettingsPage.Pages -> {
+            // Settings has no home underneath: the agent opens in its own terminal, or the agents screen offers one.
+            fun agent(
+                title: String,
+                command: (String) -> String,
+            ) {
+                val agent = runtime.agents.default ?: return stack.push(SettingsPage.Agents)
+                runtime.terminal(command(agent.bin), title, agent)
+            }
+            var sharing by remember { mutableStateOf<WidgetSpec?>(null) }
+            PagesScreen(runtime, onDismiss = close, onAgent = ::agent, onShare = { sharing = it })
+            sharing?.let { spec ->
+                ShareWidgetScreen(
+                    spec,
+                    // Only your own: one from the store or from someone else isn't yours to submit.
+                    onPublish =
+                        if (runtime.widgets.isOwnWidget(spec)) {
+                            {
+                                sharing = null
+                                agent("Publish ${spec.name}") { publishWidgetCommand(it, spec) }
+                            }
+                        } else {
+                            null
+                        },
+                    onCheck = {
+                        sharing = null
+                        agent("Check ${spec.name}") { checkSecretsCommand(it, spec) }
+                    },
+                    onDismiss = { sharing = null },
+                )
+            }
+        }
         SettingsPage.Themes -> ThemeCatalogScreen(runtime.themes, onDismiss = close)
         SettingsPage.Agents ->
             AgentsScreen(
@@ -113,20 +147,10 @@ private fun SettingsPage(
                 },
             )
         SettingsPage.Store -> StoreScreen(runtime.widgets, runtime.agents.installed, homePage, runtime.themes.picked, onDismiss = close)
+        SettingsPage.FaceStore -> StoreScreen(runtime.widgets, runtime.agents.installed, homePage, runtime.themes.picked, onDismiss = close, initialKind = OwlKind.Face)
         SettingsPage.Packages -> PackagesScreen(runtime, onDismiss = close)
         SettingsPage.Linux -> LinuxScreen(runtime, onDismiss = close)
         SettingsPage.Licenses -> LicensesScreen(onDismiss = close)
         SettingsPage.Gestures -> GesturesScreen(runtime, onDismiss = close)
-        SettingsPage.IconPacks -> IconPackScreen(runtime, onDismiss = close)
-        SettingsPage.IconSize -> IconSizeScreen(runtime, onDismiss = close)
-        SettingsPage.Search -> SearchSettingsScreen(onDismiss = close)
-        SettingsPage.Plus ->
-            PlusScreen(
-                runtime,
-                onDismiss = close,
-                onIconPacks = { stack.push(SettingsPage.IconPacks) },
-                onIconSize = { stack.push(SettingsPage.IconSize) },
-                onSearch = { stack.push(SettingsPage.Search) },
-            )
     }
 }

@@ -140,7 +140,7 @@ internal fun SliderNode(
  * A one-line text field. `text` sets what it shows, and replaces what's
  * typed whenever it changes; `onChange` gets the text as it's typed and
  * `onSubmit` when the keyboard's done key is pressed, both as `value`.
- * `clear: true` empties it after a submit. `focus: true` focuses it, raising
+ * `clear: true` empties it after a submit. `underline: false` leaves out its line, for a field framed by what's around it. `focus: true` focuses it, raising
  * the keyboard, when the screen opens or when `focus` turns true; only on a
  * screen, see [LocalInputFocus].
  */
@@ -153,6 +153,7 @@ internal fun InputNode(
     val given = p.observe("text")?.takeIf { it != Null }?.toString()
     val placeholder = p.observe("placeholder")?.toString().orEmpty()
     val clear = p.observe("clear")?.truthy == true
+    val underline = p.observe("underline")?.truthy != false
     val color = p.color("color") { Palette.foreground }
     val style = WidgetMono.copy(fontSize = p.observe("fontSize")?.num()?.sp ?: WidgetMono.fontSize)
     val onChange = p.el.handlers["onChange"]
@@ -187,6 +188,7 @@ internal fun InputNode(
                     tile?.let { t -> if (focused) tiles?.focused(t) else tiles?.unfocused(t) }
                 }
                 .drawBehind {
+                    if (!underline) return@drawBehind
                     val w = 1.dp.toPx()
                     drawRect(if (focused) Palette.accent else Palette.border, Offset(0f, size.height - w), Size(size.width, w))
                 },

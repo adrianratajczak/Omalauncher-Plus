@@ -37,6 +37,15 @@ data class Cell(
     }
 }
 
+/**
+ * The page left of the first, like a stock launcher's feed; pages further left count down from it. Each holds one face
+ * ([HomeItem.isFace]) and no tiles, and an empty one always waits left of the leftmost.
+ */
+const val FACE_PAGE = 0
+
+/** Left of page 1: a face's place, never a tile's. */
+fun isFacePage(page: Int) = page <= FACE_PAGE
+
 /** The home grid's columns before they could be set: a saved layout that doesn't say has this many. */
 const val CLASSIC_COLUMNS = 6
 
@@ -130,8 +139,21 @@ class WidgetLayout(
         if (portraitRows(size) != rows) prefs.edit().putInt(PORTRAIT_ROWS + size, rows).apply()
     }
 
-    /** The grid last laid out on screen; every page shares it. */
-    private var grid: Pair<Int, Int>? = null
+    /** The grid last laid out on screen, columns and rows; every page shares it. */
+    var grid: Pair<Int, Int>? = null
+        private set
+
+    /**
+     * The face ([HomeItem.isFace]) that [items], one page's, show: the first of them, while no tile
+     * there has a cell. A face keeps no cell, so the tiles that were there first keep the page, and
+     * a widget that becomes a face (or back) never overlaps them or comes back as a tile the page's size.
+     * One placed on the phone comes before one there by its file's `page:` alone, so a new face file
+     * (`page: 0` by default) doesn't push the face already on that page away.
+     */
+    fun owner(items: List<HomeItem>): HomeItem? {
+        val face = items.filter { it.isFace }.sortedBy { !pages.containsKey(it.key) }.firstOrNull() ?: return null
+        return face.takeIf { items.none { !it.isFace && cells[it.key] != null } }
+    }
 
     /**
      * Gives widgets that have no cell yet one at their declared size, in the
@@ -141,7 +163,8 @@ class WidgetLayout(
      * Returns the items that don't fit at their size; they get no cell, so
      * the caller can move them to a page with room instead of squeezing them
      * in or stacking them on top of other tiles. That includes apps pinned to
-     * a full page, such as page 1 of a fresh install.
+     * a full page, such as page 1 of a fresh install, and on a face's page everything but it: the
+     * tiles had no cell there yet. A face that finds tiles on its page is homeless itself.
      */
     fun place(
         items: List<HomeItem>,
@@ -149,9 +172,15 @@ class WidgetLayout(
         rows: Int,
     ): List<HomeItem> {
         grid = cols to rows
+        val owner = owner(items)
+        if (owner != null) return items.filter { it.key != owner.key }
         var changed = false
         val homeless = ArrayList<HomeItem>()
         for (item in items) {
+            if (item.isFace) {
+                homeless += item
+                continue
+            }
             if (cells[item.key] != null) continue
             val spot = freeSpot(item, items, cols, rows)
             if (spot == null) {
@@ -169,13 +198,17 @@ class WidgetLayout(
      * Gives [item] a free spot at its size among [others]; false when there's none, or no page was laid out yet.
      * Those of [others] without a cell yet (their page hasn't been laid out, or is being laid out this very frame,
      * with two pages showing) get theirs first: the page's own tiles keep their spots, the newcomer takes what's left.
+     * A face claims only an empty page, and takes no cell; nothing claims a spot beside one.
      */
     fun claim(
         item: HomeItem,
         others: List<HomeItem>,
     ): Boolean {
         val (cols, rows) = grid ?: return false
-        place(others.filter { it.key != item.key }, cols, rows)
+        val rest = others.filter { it.key != item.key }
+        if (item.isFace) return rest.isEmpty()
+        if (rest.any { it.isFace }) return false
+        place(rest, cols, rows)
         cells[item.key] = freeSpot(item, others, cols, rows) ?: return false
         save()
         return true
@@ -210,6 +243,9 @@ class WidgetLayout(
     /** The home grid's cell width and height on screen and the gap between tiles, in pixels, as last laid out. */
     @Volatile var geometry: Triple<Float, Float, Int>? = null
 
+    /** A home page's width and height in pixels, as last laid out: what a face fills. */
+    @Volatile var pageSize: Pair<Int, Int>? = null
+
     /** Whether the home grid was last laid out on its side (landscape): a tile's columns run down the screen. */
     @Volatile var turned = false
 
@@ -227,6 +263,9 @@ class WidgetLayout(
         val (across, down) = if (turned) cells.second to cells.first else cells
         return (across * cellW).toInt() - gap to (down * cellH).toInt() - gap
     }
+
+    /** A face's size in pixels; before home was laid out, an estimate: the screen less the status bar, strip and bar. */
+    fun pagePx(metrics: android.util.DisplayMetrics) = pageSize ?: (metrics.widthPixels to (metrics.heightPixels * 0.8f).toInt())
 
     fun save() {
         val json = JSONObject()

@@ -2,8 +2,6 @@ package dev.omalauncher.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,9 +37,8 @@ internal fun PinShortcutDialog(
     DialogFrame(onDismiss) {
         BasicText("add to home screen?", style = Mono.copy(fontSize = TextSize.Title))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            icon?.let { Image(it, label, Modifier.size(IconSize.dp)) }
-                ?: Box(Modifier.size(IconSize.dp).clip(LauncherStyle.shape(26.dp)).background(Palette.background), contentAlignment = Alignment.Center) {
-
+            icon?.let { Image(it, label, Modifier.size(52.dp)) }
+                ?: IconBadge(52.dp, Palette.background) {
                     BasicText(initials(label), style = Mono.copy(color = Palette.accent, fontSize = TextSize.Title))
                 }
             Column {

@@ -77,7 +77,7 @@ fun PlusScreen(
                     on = PlusPrefs.adaptiveBackground,
                     onToggle = {
                         PlusPrefs.setAdaptiveBackground(context, !PlusPrefs.adaptiveBackground)
-                        runtime.redrawAllIcons()
+                        runtime.reloadIconPacks()
                     },
                 )
             }
@@ -101,7 +101,7 @@ fun PlusScreen(
                                         .background(if (active) Palette.accent else Color.Transparent)
                                         .clickable {
                                             PlusPrefs.setIconShape(context, option)
-                                            runtime.redrawAllIcons()
+                                            runtime.reloadIconPacks()
                                         }.padding(horizontal = 14.dp, vertical = 8.dp),
                                     style = Mono.copy(color = if (active) Palette.background else Palette.foreground),
                                     softWrap = false,
@@ -118,7 +118,7 @@ fun PlusScreen(
                     on = PlusPrefs.grayscaleIcons,
                     onToggle = {
                         PlusPrefs.setGrayscaleIcons(context, !PlusPrefs.grayscaleIcons)
-                        runtime.redrawAllIcons()
+                        runtime.reloadIconPacks()
                     },
                 )
             }
@@ -146,7 +146,7 @@ fun PlusScreen(
                                         .background(if (active) Palette.accent else Color.Transparent)
                                         .clickable {
                                             PlusPrefs.setTintSource(context, option)
-                                            runtime.redrawAllIcons()
+                                            runtime.reloadIconPacks()
                                         }.padding(horizontal = 14.dp, vertical = 8.dp),
                                     style = Mono.copy(color = if (active) Palette.background else Palette.foreground),
                                     softWrap = false,
@@ -161,13 +161,13 @@ fun PlusScreen(
                             Modifier.padding(top = 10.dp),
                             style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
                         )
-                        TintRow(top, { PlusPrefs.setIconTint(context, it); runtime.redrawAllIcons() })
+                        TintRow(top, { PlusPrefs.setIconTint(context, it); runtime.reloadIconPacks() })
                         BasicText(
                             "bottom · empty keeps the single tint",
                             Modifier.padding(top = 6.dp),
                             style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
                         )
-                        TintRow(bottom, { PlusPrefs.setIconTintBottom(context, it); runtime.redrawAllIcons() })
+                        TintRow(bottom, { PlusPrefs.setIconTintBottom(context, it); runtime.reloadIconPacks() })
                     }
                 }
             }
