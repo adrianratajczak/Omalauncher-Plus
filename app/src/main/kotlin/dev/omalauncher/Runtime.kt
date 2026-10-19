@@ -45,6 +45,7 @@ import dev.omalauncher.ui.TerminalTiles
 import dev.omalauncher.ui.WindowManager
 import dev.omalauncher.ui.bitmapMask
 import dev.omalauncher.ui.IconPackStore
+import dev.omalauncher.ui.TintSource
 import dev.omalauncher.ui.Palette
 import dev.omalauncher.ui.PlusPrefs
 import dev.omalauncher.ui.decodeImageIcon
@@ -90,7 +91,9 @@ class Runtime(
     val linuxApps = LinuxAppCatalog(context, proot)
     val androidApps = AndroidAppCatalog(context, iconPacks)
     val usage = AppUsage(context)
-    val themes = ThemeStore(context, proot, style, isLinux = { linux }, onConfigChanged = ::syncGuest)
+    val themes = ThemeStore(context, proot, style, isLinux = { linux }, onConfigChanged = ::syncGuest).also {
+        it.onApplied = { if (PlusPrefs.tintSource == TintSource.Theme) reloadIconPacks() }
+    }
     private val audio = AudioBridge(proot)
     private val openBridge = OpenBridge(context, proot, onOpenFiles = ::openFiles, onEdit = ::edit)
     val agents = AgentStore(proot, onChanged = ::syncGuest)
@@ -213,9 +216,10 @@ class Runtime(
         scope.launch { themes.ensureRelease() }
     }
 
-    /** Redraws icons after an icon pack change. */
+    /** Redraws icons after an icon pack or tint change. */
     fun reloadIconPacks() {
-        if (iconPacks.refresh()) androidApps.refreshIcons()
+        iconPacks.refresh()
+        androidApps.refreshIcons()
     }
 
     fun syncDayNight() {
