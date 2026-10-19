@@ -11,6 +11,7 @@ import android.content.pm.LauncherApps.ShortcutQuery
 import android.content.pm.ShortcutInfo
 import android.net.Uri
 import android.graphics.Bitmap
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
@@ -35,6 +36,8 @@ import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.PathParser
 import dev.omalauncher.ui.IconPackStore
+import dev.omalauncher.ui.PlusPrefs
+import dev.omalauncher.ui.finishIcon
 import dev.omalauncher.ui.iconMask
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -625,12 +628,17 @@ class AndroidAppCatalog(
         profile: Long?,
         clone: Boolean,
     ): Pair<ImageBitmap, ImageBitmap> {
+        val drawn = if (!PlusPrefs.adaptiveBackground) (d as? AdaptiveIconDrawable)?.foreground ?: d else d
+        val inset = if (drawn !== d) iconPx / 4 else 0
         val bmp = Bitmap.createBitmap(iconPx, iconPx, Bitmap.Config.ARGB_8888)
-        d.setBounds(0, 0, iconPx, iconPx)
-        d.draw(Canvas(bmp))
+        drawn.setBounds(-inset, -inset, iconPx + inset, iconPx + inset)
+        drawn.draw(Canvas(bmp))
         var mask = iconMask(d, iconPx)
         if (profile != null) mask = addBadge(bmp, mask, if (clone) cloneMark else briefcase)
-        return bmp.asImageBitmap() to mask.asImageBitmap()
+        // Plus shapes, grayscales and tints the icon after its badge; the silhouette stays as drawn.
+        val (top, bottom) = PlusPrefs.resolvedTints()
+        val finished = finishIcon(bmp, PlusPrefs.iconShape, PlusPrefs.grayscaleIcons, top, bottom)
+        return finished.asImageBitmap() to mask.asImageBitmap()
     }
 
     /**
